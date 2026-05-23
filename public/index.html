@@ -121,9 +121,10 @@
     }
     .btn:active { transform: scale(0.97); }
     .btn-primary { background: var(--accent); color: #fff; }
-    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:hover:not(:disabled) { opacity: 0.9; }
     .btn-green  { background: var(--green); color: #000; }
     .btn-muted  { background: var(--border); color: var(--text); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
 
     /* ── Section banner ───────────────────────────────── */
     .section-banner {
