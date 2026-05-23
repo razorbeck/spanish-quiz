@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel — Spanish Quiz</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0d0d1a;
+      --surface: #1a1a2e;
+      --card:    #16213e;
+      --border:  #2d2d5e;
+      --accent:  #e94560;
+      --text:    #eaeaea;
+      --muted:   #777;
+      --green:   #00c896;
+      --red:     #ff4757;
+      --yellow:  #ffd32a;
+      --purple:  #7c4dff;
+      --radius:  10px;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Login overlay ─────────────────────────────────── */
+    #login-overlay {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+    }
+    #login-overlay.hidden { display: none; }
+    .login-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+      width: 340px;
+      text-align: center;
+    }
+    .login-box h1 { font-size: 1.4rem; margin-bottom: 6px; }
+    .login-box p  { color: var(--muted); font-size: 0.85rem; margin-bottom: 24px; }
+    .login-box input {
+      width: 100%; padding: 12px 16px;
+      background: var(--card); border: 2px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-size: 1rem;
+      outline: none; margin-bottom: 14px;
+    }
+    .login-box input:focus { border-color: var(--accent); }
+    .login-err { color: var(--red); font-size: 0.85rem; margin-bottom: 10px; min-height: 20px; }
+
+    /* ── Layout ────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 2px solid var(--accent);
+      padding: 14px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 50;
+    }
+    header h1 { font-size: 1.1rem; color: var(--accent); }
+    .main-content { max-width: 1100px; margin: 0 auto; padding: 28px 16px 60px; }
+
+    /* ── Stat cards ────────────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      text-align: center;
+    }
+    .stat-card .val { font-size: 2rem; font-weight: 900; color: var(--accent); }
+    .stat-card .lbl { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+
+    /* ── Toolbar ────────────────────────────────────────── */
+    .toolbar {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+    }
+    .toolbar h2 { font-size: 1rem; flex: 1; }
+
+    /* ── Buttons ────────────────────────────────────────── */
+    .btn {
+      padding: 9px 20px; border: none; border-radius: var(--radius);
+      font-size: 0.87rem; font-weight: 700; cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s; letter-spacing: 0.3px;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-green   { background: var(--green);  color: #000; }
+    .btn-red     { background: var(--red);    color: #fff; }
+    .btn-muted   { background: var(--border); color: var(--text); }
+    .btn:hover   { opacity: 0.85; }
+
+    /* ── Table ──────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    th {
+      background: var(--surface); padding: 12px 14px;
+      text-align: left; font-size: 0.73rem; text-transform: uppercase;
+      letter-spacing: 1px; color: var(--muted); border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    td { padding: 12px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr.incomplete td { color: var(--muted); }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 99px;
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.5px;
+    }
+    .badge-green  { background: rgba(0,200,150,0.18); color: var(--green); }
+    .badge-yellow { background: rgba(255,211,42,0.15); color: var(--yellow); }
+    .badge-red    { background: rgba(255,71,87,0.15);  color: var(--red); }
+    .badge-muted  { background: var(--border); color: var(--muted); }
+
+    /* ── Detail panel ────────────────────────────────────── */
+    #detail-panel {
+      display: none;
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.7);
+      align-items: flex-start; justify-content: center;
+      padding: 24px 16px;
+      overflow-y: auto;
+    }
+    #detail-panel.open { display: flex; }
+    .detail-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 100%; max-width: 760px;
+      padding: 28px;
+      position: relative;
+    }
+    .detail-close {
+      position: absolute; top: 16px; right: 16px;
+      background: var(--border); border: none; border-radius: 8px;
+      color: var(--text); padding: 6px 12px; cursor: pointer; font-size: 0.85rem;
+    }
+    .detail-header { margin-bottom: 20px; }
+    .detail-header h2 { font-size: 1.2rem; }
+    .detail-header .sub { color: var(--muted); font-size: 0.82rem; margin-top: 4px; }
+
+    .detail-section { margin-bottom: 24px; }
+    .detail-section h3 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+
+    .log-row {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.84rem;
+    }
+    .log-row:last-child { border-bottom: none; }
+    .log-row .icon { flex-shrink: 0; width: 20px; }
+    .log-row .q-text { flex: 1; }
+    .log-row .chosen  { color: var(--muted); font-size: 0.78rem; }
+    .log-row .answer  { color: var(--green); font-size: 0.78rem; }
+
+    .open-response-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--purple);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      padding: 14px 18px;
+      line-height: 1.6;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      margin-bottom: 16px;
+    }
+    .grade-form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .grade-form label { font-size: 0.85rem; color: var(--muted); }
+    .grade-form select, .grade-form input[type=text] {
+      padding: 8px 12px; background: var(--card); border: 2px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-size: 0.85rem; outline: none;
+    }
+    .grade-form select:focus, .grade-form input:focus { border-color: var(--accent); }
+    .grade-form input[type=text] { flex: 1; min-width: 200px; }
+
+    /* ── Spinner ─────────────────────────────────────────── */
+    .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 60px auto; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ───────────────────────────────────────────── */
+    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 22px; font-size: 0.88rem; transition: transform 0.3s; z-index: 9999; pointer-events: none; }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- ── Login Overlay ──────────────────────────────────────────────────── -->
+<div id="login-overlay">
+  <div class="login-box">
+    <h1>🔒 Admin Login</h1>
+    <p>Spanish Quiz · Admin Panel</p>
+    <div class="login-err" id="login-err"></div>
+    <input type="password" id="admin-password" placeholder="Password"
+      onkeydown="if(event.key==='Enter') doLogin()" />
+    <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Sign In</button>
+  </div>
+</div>
+
+<!-- ── Main App ───────────────────────────────────────────────────────── -->
+<header>
+  <h1>🇪🇸 Spanish Quiz — Admin Panel</h1>
+  <button class="btn btn-muted" onclick="doLogout()">Log Out</button>
+</header>
+
+<div class="main-content">
+  <div id="app-content">
+    <div class="spinner"></div>
+  </div>
+</div>
+
+<!-- ── Detail Panel ───────────────────────────────────────────────────── -->
+<div id="detail-panel">
+  <div class="detail-box">
+    <button class="detail-close" onclick="closeDetail()">✕ Close</button>
+    <div id="detail-content"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ── State ────────────────────────────────────────────────────────────────
+  let sessions = [];
+  let stats = {};
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  function toast(msg, d = 2800) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), d);
+  }
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
+  async function checkAuth() {
+    const r = await fetch('/api/admin/check');
+    const d = await r.json();
+    return d.loggedIn;
+  }
+
+  async function doLogin() {
+    const pw = document.getElementById('admin-password').value;
+    document.getElementById('login-err').textContent = '';
+    try {
+      const r = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      if (r.ok) {
+        document.getElementById('login-overlay').classList.add('hidden');
+        loadDashboard();
+      } else {
+        document.getElementById('login-err').textContent = 'Incorrect password.';
+      }
+    } catch { document.getElementById('login-err').textContent = 'Connection error.'; }
+  }
+
+  async function doLogout() {
+    await fetch('/api/admin/logout', { method: 'POST' });
+    location.reload();
+  }
+
+  // ── Dashboard ─────────────────────────────────────────────────────────────
+  async function loadDashboard() {
+    document.getElementById('app-content').innerHTML = '<div class="spinner"></div>';
+    try {
+      const [sRes, stRes] = await Promise.all([
+        fetch('/api/admin/sessions'),
+        fetch('/api/admin/stats'),
+      ]);
+      sessions = await sRes.json();
+      stats    = await stRes.json();
+      renderDashboard();
+    } catch (e) {
+      document.getElementById('app-content').innerHTML =
+        '<p style="color:var(--red);padding:40px">Failed to load data.</p>';
+    }
+  }
+
+  function renderDashboard() {
+    const completed = sessions.filter(s => s.completed_at);
+    const unreviewed = completed.filter(s => !s.reviewed);
+
+    let html = `
+      <div class="stats-grid">
+        <div class="stat-card"><div class="val">${stats.total ?? 0}</div><div class="lbl">Total Attempts</div></div>
+        <div class="stat-card"><div class="val">${unreviewed.length}</div><div class="lbl">Needs Review</div></div>
+        <div class="stat-card"><div class="val">${stats.avg != null ? stats.avg + '%' : '—'}</div><div class="lbl">Avg MC Score</div></div>
+        <div class="stat-card"><div class="val">${stats.best != null ? stats.best + '%' : '—'}</div><div class="lbl">Best Score</div></div>
+        <div class="stat-card" title="Weakest category"><div class="val" style="font-size:1rem;padding-top:6px">${stats.weakCat ?? '—'}</div><div class="lbl">Weak Category</div></div>
+      </div>
+
+      <div class="toolbar">
+        <h2>All Attempts (${sessions.length})</h2>
+        <a href="/api/admin/export.csv" class="btn btn-muted" download>⬇ Export CSV</a>
+        <button class="btn btn-primary" onclick="loadDashboard()">↻ Refresh</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Version</th>
+              <th>Date</th>
+              <th>MC Score</th>
+              <th>Open</th>
+              <th>Time</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>`;
+
+    if (!sessions.length) {
+      html += '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:40px">No attempts yet.</td></tr>';
+    }
+
+    sessions.forEach(s => {
+      const isComplete = !!s.completed_at;
+      const pct = s.mc_total > 0 ? Math.round((s.mc_score / s.mc_total) * 100) : null;
+      const pctStr = pct !== null ? `${pct}%` : '—';
+      const pctColor = pct === null ? '' : pct >= 75 ? 'var(--green)' : pct >= 60 ? 'var(--yellow)' : 'var(--red)';
+      const date = s.started_at ? new Date(s.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+      const timeStr = s.time_ms ? formatTime(s.time_ms) : '—';
+      const openStr = s.open_score !== null && s.open_score !== undefined ? `${s.open_score}/5` : 'Pending';
+      const statusBadge = !isComplete
+        ? '<span class="badge badge-muted">In Progress</span>'
+        : s.reviewed
+        ? '<span class="badge badge-green">Reviewed</span>'
+        : '<span class="badge badge-yellow">Needs Review</span>';
+
+      html += `<tr class="${!isComplete ? 'incomplete' : ''}">
+        <td><strong>${escH(s.student_name)}</strong></td>
+        <td>v${s.version}</td>
+        <td>${date}</td>
+        <td style="color:${pctColor};font-weight:700">${s.mc_score ?? 0}/${s.mc_total ?? 0} <span style="color:var(--muted);font-weight:normal">(${pctStr})</span></td>
+        <td>${openStr}</td>
+        <td style="color:var(--muted)">${timeStr}</td>
+        <td>${statusBadge}</td>
+        <td>
+          ${isComplete ? `<button class="btn btn-primary" style="padding:6px 14px;font-size:0.78rem" onclick="openDetail('${s.id}')">Review</button>` : ''}
+        </td>
+      </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+    document.getElementById('app-content').innerHTML = html;
+  }
+
+  // ── Detail panel ──────────────────────────────────────────────────────────
+  async function openDetail(id) {
+    document.getElementById('detail-content').innerHTML = '<div class="spinner"></div>';
+    document.getElementById('detail-panel').classList.add('open');
+    document.body.style.overflow = 'hidden';
+
+    try {
+      const r = await fetch(`/api/admin/session/${id}`);
+      const data = await r.json();
+      renderDetail(data);
+    } catch {
+      document.getElementById('detail-content').innerHTML = '<p style="color:var(--red)">Failed to load.</p>';
+    }
+  }
+
+  function closeDetail() {
+    document.getElementById('detail-panel').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  function renderDetail(data) {
+    const pct = data.mc_total > 0 ? Math.round((data.mc_score / data.mc_total) * 100) : 0;
+    const date = new Date(data.started_at).toLocaleString('en-US');
+    const timeStr = data.time_ms ? formatTime(data.time_ms) : '—';
+
+    // Category breakdown from cat_json
+    let cats = {};
+    try { cats = JSON.parse(data.cat_json || '{}'); } catch (_) {}
+    let catHtml = '';
+    Object.entries(cats).forEach(([name, v]) => {
+      const p = v.t > 0 ? Math.round((v.c / v.t) * 100) : 0;
+      const color = p >= 75 ? 'var(--green)' : p >= 60 ? 'var(--yellow)' : 'var(--red)';
+      catHtml += `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:0.84rem">
+        <div style="width:120px">${name}</div>
+        <div style="flex:1;height:7px;background:var(--border);border-radius:99px;overflow:hidden">
+          <div style="height:100%;width:${p}%;background:${color};border-radius:99px"></div>
+        </div>
+        <div style="width:45px;text-align:right;color:var(--muted)">${v.c}/${v.t}</div>
+      </div>`;
+    });
+
+    // Question log
+    let logHtml = '';
+    (data.log || []).forEach(l => {
+      const icon = l.is_correct ? '✅' : '❌';
+      const section = l.section || '';
+      logHtml += `<div class="log-row">
+        <div class="icon">${icon}</div>
+        <div class="q-text">
+          <div>${escH(l.question)}</div>
+          <div class="chosen">Chose: ${escH(l.chosen)}</div>
+          ${!l.is_correct ? `<div class="answer">Correct: ${escH(l.correct_ans)}</div>` : ''}
+        </div>
+        <div style="color:var(--muted);font-size:0.72rem;flex-shrink:0">${section}</div>
+      </div>`;
+    });
+
+    const openHtml = data.open_response
+      ? `<div class="open-response-box">${escH(data.open_response)}</div>`
+      : '<p style="color:var(--muted);margin-bottom:16px">No response submitted.</p>';
+
+    const currentOpenScore = data.open_score !== null && data.open_score !== undefined ? data.open_score : '';
+    const currentNotes = data.admin_notes || '';
+
+    document.getElementById('detail-content').innerHTML = `
+      <div class="detail-header">
+        <h2>${escH(data.student_name)} — Version ${data.version}</h2>
+        <div class="sub">${date} · ${timeStr} · MC: ${data.mc_score}/${data.mc_total} (${pct}%)</div>
+      </div>
+
+      <div class="detail-section">
+        <h3>Category Breakdown</h3>
+        ${catHtml || '<p style="color:var(--muted)">No category data.</p>'}
+      </div>
+
+      <div class="detail-section">
+        <h3>Open Response</h3>
+        ${openHtml}
+        <div class="grade-form">
+          <label>Score (0–5):</label>
+          <select id="grade-score">
+            ${[0,1,2,3,4,5].map(n => `<option value="${n}" ${n == currentOpenScore ? 'selected' : ''}>${n}</option>`).join('')}
+          </select>
+          <label>Notes:</label>
+          <input type="text" id="grade-notes" placeholder="Optional feedback…" value="${escH(currentNotes)}" />
+          <button class="btn btn-green" onclick="submitGrade('${data.id}')">Save Grade</button>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <h3>Question Log (${(data.log || []).length} questions)</h3>
+        ${logHtml || '<p style="color:var(--muted)">No log data.</p>'}
+      </div>
+
+      <div style="margin-top:16px;text-align:right">
+        <button class="btn btn-red" onclick="deleteSession('${data.id}')">🗑 Delete This Attempt</button>
+      </div>
+    `;
+  }
+
+  async function submitGrade(id) {
+    const score = parseInt(document.getElementById('grade-score').value, 10);
+    const notes = document.getElementById('grade-notes').value.trim();
+    try {
+      const r = await fetch(`/api/admin/grade/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ score, notes }),
+      });
+      if (r.ok) {
+        toast('Grade saved!');
+        loadDashboard();    // refresh table in background
+      } else { toast('Save failed.'); }
+    } catch { toast('Network error.'); }
+  }
+
+  async function deleteSession(id) {
+    if (!confirm('Delete this attempt? This cannot be undone.')) return;
+    try {
+      const r = await fetch(`/api/admin/session/${id}`, { method: 'DELETE' });
+      if (r.ok) {
+        closeDetail();
+        toast('Attempt deleted.');
+        loadDashboard();
+      } else { toast('Delete failed.'); }
+    } catch { toast('Network error.'); }
+  }
+
+  // ── Utilities ─────────────────────────────────────────────────────────────
+  function escH(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function formatTime(ms) {
+    const s = Math.round(ms / 1000);
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}m ${sec}s`;
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  (async () => {
+    const loggedIn = await checkAuth();
+    if (loggedIn) {
+      document.getElementById('login-overlay').classList.add('hidden');
+      loadDashboard();
+    }
+  })();
+</script>
+</body>
+</html>

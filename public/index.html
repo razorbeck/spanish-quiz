@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spanish II — Final Practice Exam</title>
+  <style>
+    /* ── Reset & base ─────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #0d0d1a;
+      --surface:  #1a1a2e;
+      --card:     #16213e;
+      --border:   #2d2d5e;
+      --accent:   #e94560;
+      --blue:     #0f3460;
+      --text:     #eaeaea;
+      --muted:    #888;
+      --green:    #00c896;
+      --red:      #ff4757;
+      --yellow:   #ffd32a;
+      --purple:   #7c4dff;
+      --orange:   #ff6b35;
+      --radius:   12px;
+    }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Header ───────────────────────────────────────── */
+    header {
+      width: 100%;
+      background: var(--surface);
+      border-bottom: 2px solid var(--accent);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.15rem; color: var(--accent); letter-spacing: 1px; }
+    #progress-wrap { flex: 1; margin: 0 24px; }
+    #progress-bar-outer {
+      height: 8px;
+      background: var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    #progress-bar-inner {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--purple));
+      border-radius: 99px;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+    #progress-label { font-size: 0.75rem; color: var(--muted); text-align: right; margin-top: 4px; }
+    #timer-display { font-size: 0.9rem; color: var(--yellow); font-variant-numeric: tabular-nums; min-width: 50px; text-align: right; }
+
+    /* ── Main layout ──────────────────────────────────── */
+    main {
+      width: 100%;
+      max-width: 780px;
+      padding: 28px 16px 60px;
+      flex: 1;
+    }
+
+    /* ── Screens ──────────────────────────────────────── */
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    /* ── Start screen ─────────────────────────────────── */
+    #screen-start {
+      text-align: center;
+      padding-top: 60px;
+    }
+    .flag { font-size: 4rem; margin-bottom: 16px; }
+    #screen-start h2 { font-size: 2rem; margin-bottom: 8px; }
+    #screen-start p { color: var(--muted); margin-bottom: 32px; line-height: 1.6; }
+    .start-form { display: flex; flex-direction: column; gap: 14px; max-width: 340px; margin: 0 auto; }
+    .start-form input {
+      padding: 14px 18px;
+      border-radius: var(--radius);
+      border: 2px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .start-form input:focus { border-color: var(--accent); }
+    .start-form select {
+      padding: 14px 18px;
+      border-radius: var(--radius);
+      border: 2px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+    }
+
+    /* ── Buttons ──────────────────────────────────────── */
+    .btn {
+      display: inline-block;
+      padding: 14px 32px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+      letter-spacing: 0.5px;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-green  { background: var(--green); color: #000; }
+    .btn-muted  { background: var(--border); color: var(--text); }
+
+    /* ── Section banner ───────────────────────────────── */
+    .section-banner {
+      background: linear-gradient(135deg, var(--blue), var(--surface));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 22px;
+      margin-bottom: 24px;
+    }
+    .section-banner .sec-label { font-size: 0.7rem; color: var(--accent); text-transform: uppercase; letter-spacing: 2px; }
+    .section-banner h2 { font-size: 1.2rem; margin-top: 4px; }
+
+    /* ── Question card ────────────────────────────────── */
+    .q-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 26px;
+      margin-bottom: 20px;
+      animation: fadeUp 0.25s ease;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .q-number { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .q-text { font-size: 1.1rem; line-height: 1.6; margin-bottom: 20px; }
+    .q-text strong { color: var(--yellow); }
+
+    /* ── Answer grid ──────────────────────────────────── */
+    .answer-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 520px) { .answer-grid { grid-template-columns: 1fr; } }
+    .ans-btn {
+      padding: 14px 16px;
+      border-radius: var(--radius);
+      border: 2px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.95rem;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, background 0.15s, transform 0.1s;
+      line-height: 1.4;
+    }
+    .ans-btn:hover:not(:disabled) {
+      border-color: var(--accent);
+      background: rgba(233,69,96,0.12);
+    }
+    .ans-btn:active:not(:disabled) { transform: scale(0.98); }
+    .ans-btn.correct  { border-color: var(--green) !important; background: rgba(0,200,150,0.15) !important; color: var(--green) !important; }
+    .ans-btn.wrong    { border-color: var(--red)   !important; background: rgba(255,71,87,0.15)  !important; color: var(--red)   !important; }
+    .ans-btn:disabled { cursor: default; }
+
+    /* ── Explanation box ──────────────────────────────── */
+    .explanation {
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: rgba(0,0,0,0.3);
+      border-left: 3px solid var(--yellow);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      font-size: 0.9rem;
+      color: #ccc;
+      line-height: 1.5;
+      display: none;
+    }
+    .explanation.visible { display: block; animation: fadeUp 0.2s ease; }
+
+    /* ── Next button (inside card) ────────────────────── */
+    .next-wrap { margin-top: 20px; text-align: right; display: none; }
+    .next-wrap.visible { display: block; }
+
+    /* ── Reading passage ──────────────────────────────── */
+    .passage-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--purple);
+      border-radius: var(--radius);
+      padding: 22px 26px;
+      margin-bottom: 24px;
+      line-height: 1.8;
+      font-size: 0.98rem;
+    }
+
+    /* ── Open response ────────────────────────────────── */
+    .open-prompt {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 16px;
+    }
+    .open-prompt .prompt-label { font-size: 0.72rem; color: var(--purple); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+    .open-prompt p { line-height: 1.6; }
+    textarea {
+      width: 100%;
+      min-height: 160px;
+      padding: 16px;
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 1rem;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+      margin-bottom: 16px;
+    }
+    textarea:focus { border-color: var(--purple); }
+
+    /* ── Score screen ─────────────────────────────────── */
+    #screen-score { text-align: center; padding-top: 40px; }
+    .score-circle {
+      width: 160px; height: 160px;
+      border-radius: 50%;
+      background: conic-gradient(var(--accent) 0%, var(--purple) 100%);
+      margin: 0 auto 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .score-circle::before {
+      content: '';
+      width: 120px; height: 120px;
+      border-radius: 50%;
+      background: var(--bg);
+      position: absolute;
+    }
+    .score-pct { position: relative; z-index: 1; font-size: 2.4rem; font-weight: 900; }
+    #screen-score h2 { font-size: 1.8rem; margin-bottom: 8px; }
+    #screen-score .sub { color: var(--muted); margin-bottom: 32px; }
+    .cat-breakdown {
+      text-align: left;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .cat-breakdown h3 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 16px; }
+    .cat-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 0.9rem; }
+    .cat-name { width: 140px; flex-shrink: 0; }
+    .cat-bar-outer { flex: 1; height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .cat-bar-inner { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--purple)); }
+    .cat-score { width: 50px; text-align: right; color: var(--muted); font-size: 0.82rem; }
+
+    /* ── Open response pending badge ──────────────────── */
+    .pending-badge {
+      display: inline-block;
+      background: rgba(255,211,42,0.15);
+      border: 1px solid var(--yellow);
+      color: var(--yellow);
+      border-radius: 99px;
+      padding: 4px 14px;
+      font-size: 0.8rem;
+      margin-bottom: 24px;
+    }
+
+    /* ── Loading spinner ──────────────────────────────── */
+    .spinner {
+      width: 48px; height: 48px;
+      border: 4px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 80px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast notifications ──────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 24px;
+      font-size: 0.9rem;
+      transition: transform 0.3s ease;
+      z-index: 999;
+      pointer-events: none;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🇪🇸 Spanish II</h1>
+  <div id="progress-wrap">
+    <div id="progress-bar-outer"><div id="progress-bar-inner"></div></div>
+    <div id="progress-label">0 / 0</div>
+  </div>
+  <div id="timer-display">0:00</div>
+</header>
+
+<main>
+  <!-- ── Start Screen ─────────────────────────────────────── -->
+  <div id="screen-start" class="screen active">
+    <div class="flag">🇪🇸</div>
+    <h2>Final Practice Exam</h2>
+    <p>Spanish II · Spring Semester<br>Enter your name and choose a version to begin.</p>
+    <div class="start-form">
+      <input type="text" id="student-name" placeholder="Your name" maxlength="60" autocomplete="off" />
+      <select id="version-select">
+        <option value="0">🎲 Random version</option>
+        <option value="1">Version 1</option>
+        <option value="2">Version 2</option>
+        <option value="3">Version 3</option>
+        <option value="4">Version 4</option>
+        <option value="5">Version 5</option>
+        <option value="6">Version 6</option>
+        <option value="7">Version 7</option>
+        <option value="8">Version 8</option>
+        <option value="9">Version 9</option>
+        <option value="10">Version 10</option>
+      </select>
+      <button class="btn btn-primary" onclick="startQuiz()">Start Exam</button>
+    </div>
+  </div>
+
+  <!-- ── Loading Screen ──────────────────────────────────── -->
+  <div id="screen-loading" class="screen">
+    <div class="spinner"></div>
+  </div>
+
+  <!-- ── MC Quiz Screen ──────────────────────────────────── -->
+  <div id="screen-mc" class="screen">
+    <div id="mc-content"></div>
+  </div>
+
+  <!-- ── Reading Screen ──────────────────────────────────── -->
+  <div id="screen-reading" class="screen">
+    <div id="reading-content"></div>
+  </div>
+
+  <!-- ── Open Response Screen ────────────────────────────── -->
+  <div id="screen-open" class="screen">
+    <div class="section-banner">
+      <div class="sec-label">Section 4</div>
+      <h2>Open Response</h2>
+    </div>
+    <div class="passage-box" id="open-passage-box"></div>
+    <div class="open-prompt">
+      <div class="prompt-label">Prompt</div>
+      <p id="open-question-text"></p>
+    </div>
+    <textarea id="open-response-input" placeholder="Write your response here in Spanish or English..."></textarea>
+    <button class="btn btn-primary" onclick="submitQuiz()">Submit Exam</button>
+  </div>
+
+  <!-- ── Score Screen ─────────────────────────────────────── -->
+  <div id="screen-score" class="screen">
+    <div class="score-circle">
+      <div class="score-pct" id="score-pct-display">--%</div>
+    </div>
+    <h2 id="score-heading">Great job!</h2>
+    <p class="sub" id="score-sub"></p>
+    <div class="pending-badge">📝 Open response submitted — awaiting teacher review</div>
+    <div class="cat-breakdown" id="cat-breakdown"></div>
+    <button class="btn btn-primary" onclick="location.reload()">Take Another Version</button>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+  // ── State ─────────────────────────────────────────────────────────────────
+  let state = {
+    sessionId: null,
+    mcQuestions: [],
+    readingMcQuestions: [],
+    openQuestion: '',
+    readingPassage: '',
+    mcAnswered: [],       // track answered status per mc question
+    readingAnswered: [],  // track answered status per reading mc question
+    mcScore: 0,
+    readingMcScore: 0,
+    catScores: {
+      'Fiesta Fatal': { c: 0, t: 0 },
+      'Preterite':    { c: 0, t: 0 },
+      'Imperfect':    { c: 0, t: 0 },
+      'Vocabulary':   { c: 0, t: 0 },
+      'Reading':      { c: 0, t: 0 },
+    },
+    timerInterval: null,
+    startTime: null,
+    currentMcIndex: 0,
+    phase: 'start', // start | mc | reading | open | score
+  };
+
+  // ── Utilities ─────────────────────────────────────────────────────────────
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    state.phase = id.replace('screen-', '');
+  }
+
+  function toast(msg, duration = 2500) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), duration);
+  }
+
+  function updateProgress(done, total) {
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    document.getElementById('progress-bar-inner').style.width = pct + '%';
+    document.getElementById('progress-label').textContent = `${done} / ${total}`;
+  }
+
+  function startTimer() {
+    state.startTime = Date.now();
+    state.timerInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - state.startTime) / 1000);
+      const m = Math.floor(elapsed / 60);
+      const s = elapsed % 60;
+      document.getElementById('timer-display').textContent = `${m}:${String(s).padStart(2,'0')}`;
+    }, 1000);
+  }
+
+  function stopTimer() {
+    clearInterval(state.timerInterval);
+    return Date.now() - state.startTime;
+  }
+
+  function sectionLabel(section) {
+    if (section === 'FIESTA_FATAL') return 'Fiesta Fatal';
+    if (section === 'PRETERITE')    return 'Preterite';
+    if (section === 'IMPERFECT')    return 'Imperfect';
+    if (section === 'VOCABULARY')   return 'Vocabulary';
+    if (section === 'READING')      return 'Reading';
+    return section;
+  }
+
+  function catKey(section) {
+    const map = {
+      FIESTA_FATAL: 'Fiesta Fatal',
+      PRETERITE:    'Preterite',
+      IMPERFECT:    'Imperfect',
+      VOCABULARY:   'Vocabulary',
+      READING:      'Reading',
+    };
+    return map[section] || section;
+  }
+
+  // ── Start quiz ──────────────────────────────────────────────────────────────
+  async function startQuiz() {
+    const name    = document.getElementById('student-name').value.trim();
+    const version = parseInt(document.getElementById('version-select').value, 10);
+    if (!name) { toast('Please enter your name!'); return; }
+
+    showScreen('screen-loading');
+    try {
+      const resp = await fetch('/api/quiz/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentName: name, version: version || 0 }),
+      });
+      if (!resp.ok) throw new Error('Server error');
+      const data = await resp.json();
+
+      state.sessionId          = data.sessionId;
+      state.mcQuestions        = data.mcQuestions;
+      state.readingMcQuestions = data.readingMcQuestions;
+      state.openQuestion       = data.openQuestion;
+      state.readingPassage     = data.readingPassage;
+      state.mcAnswered         = new Array(data.mcQuestions.length).fill(false);
+      state.readingAnswered    = new Array(data.readingMcQuestions.length).fill(false);
+
+      startTimer();
+      buildMcScreen();
+      showScreen('screen-mc');
+      updateProgress(0, state.mcQuestions.length + state.readingMcQuestions.length + 1);
+    } catch (e) {
+      toast('Could not connect to server. Please try again.');
+      showScreen('screen-start');
+    }
+  }
+
+  // ── Build MC screen ─────────────────────────────────────────────────────────
+  function buildMcScreen() {
+    const container = document.getElementById('mc-content');
+    const sections = [
+      { label: 'Section 1', title: 'Fiesta Fatal — Events & Characters', keys: ['FIESTA_FATAL'] },
+      { label: 'Section 2', title: 'Verb Conjugation — Preterite & Imperfect', keys: ['PRETERITE', 'IMPERFECT'] },
+      { label: 'Section 3', title: 'Vocabulary', keys: ['VOCABULARY'] },
+    ];
+
+    // Group questions by section
+    const grouped = {};
+    state.mcQuestions.forEach((q, i) => {
+      if (!grouped[q.section]) grouped[q.section] = [];
+      grouped[q.section].push({ q, i });
+    });
+
+    let html = '';
+    sections.forEach(sec => {
+      const qs = sec.keys.flatMap(k => grouped[k] || []);
+      if (!qs.length) return;
+      html += `<div class="section-banner"><div class="sec-label">${sec.label}</div><h2>${sec.title}</h2></div>`;
+      qs.forEach(({ q, i }) => {
+        html += buildQuestionCard(q, i, 'mc');
+      });
+    });
+
+    // Add "Continue to Reading" button
+    html += `<div style="text-align:center;margin-top:16px">
+      <button class="btn btn-primary" id="btn-to-reading" onclick="goToReading()" disabled>
+        Continue to Reading Section →
+      </button>
+    </div>`;
+
+    container.innerHTML = html;
+    checkMcComplete();
+  }
+
+  function buildQuestionCard(q, i, pool) {
+    const optionColors = ['#e94560','#0f3460','#7c4dff','#ff6b35'];
+    let opts = '';
+    q.options.forEach((opt, oi) => {
+      opts += `<button class="ans-btn"
+        onclick="submitAnswer('${pool}', ${i}, ${oi}, this.parentElement)"
+        style="border-color: ${optionColors[oi]}40;"
+        data-pool="${pool}" data-qi="${i}" data-oi="${oi}">
+        <span style="color:${optionColors[oi]};font-weight:700;margin-right:8px;">${String.fromCharCode(65+oi)}.</span>${escapeHtml(opt)}
+      </button>`;
+    });
+    return `<div class="q-card" id="card-${pool}-${i}">
+      <div class="q-number">${sectionLabel(q.section)} · Q${i+1}</div>
+      <div class="q-text">${escapeHtml(q.question)}</div>
+      <div class="answer-grid">${opts}</div>
+      <div class="explanation" id="exp-${pool}-${i}"></div>
+    </div>`;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── Submit a single answer ──────────────────────────────────────────────────
+  async function submitAnswer(pool, qIndex, chosenIndex, gridEl) {
+    const buttons = gridEl.querySelectorAll('.ans-btn');
+    buttons.forEach(b => b.disabled = true);
+
+    try {
+      const resp = await fetch('/api/quiz/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: state.sessionId, pool, qIndex, chosen: chosenIndex }),
+      });
+      if (!resp.ok) throw new Error('server error');
+      const data = await resp.json();
+
+      // Highlight correct/wrong
+      buttons[chosenIndex].classList.add(data.correct ? 'correct' : 'wrong');
+      if (!data.correct) {
+        buttons[data.correctIndex].classList.add('correct');
+      }
+
+      // Show explanation
+      const expEl = document.getElementById(`exp-${pool}-${qIndex}`);
+      expEl.textContent = '💡 ' + data.explanation;
+      expEl.classList.add('visible');
+
+      // Update scores
+      const q = pool === 'mc' ? state.mcQuestions[qIndex] : state.readingMcQuestions[qIndex];
+      const ck = catKey(pool === 'reading' ? 'READING' : q.section);
+      if (!state.catScores[ck]) state.catScores[ck] = { c: 0, t: 0 };
+      state.catScores[ck].t++;
+      if (data.correct) {
+        state.catScores[ck].c++;
+        if (pool === 'mc')      state.mcScore++;
+        if (pool === 'reading') state.readingMcScore++;
+      }
+
+      // Mark answered
+      if (pool === 'mc')      state.mcAnswered[qIndex] = true;
+      if (pool === 'reading') state.readingAnswered[qIndex] = true;
+
+      // Update progress
+      const done = state.mcAnswered.filter(Boolean).length + state.readingAnswered.filter(Boolean).length;
+      const total = state.mcQuestions.length + state.readingMcQuestions.length + 1;
+      updateProgress(done, total);
+
+      checkMcComplete();
+      checkReadingComplete();
+
+    } catch (e) {
+      buttons.forEach(b => b.disabled = false);
+      toast('Network error. Please try again.');
+    }
+  }
+
+  function checkMcComplete() {
+    const allDone = state.mcAnswered.every(Boolean);
+    const btn = document.getElementById('btn-to-reading');
+    if (btn) btn.disabled = !allDone;
+  }
+
+  function checkReadingComplete() {
+    const allDone = state.readingAnswered.every(Boolean);
+    const btn = document.getElementById('btn-to-open');
+    if (btn) btn.disabled = !allDone;
+  }
+
+  // ── Reading section ─────────────────────────────────────────────────────────
+  function goToReading() {
+    const container = document.getElementById('reading-content');
+    let html = `<div class="section-banner"><div class="sec-label">Section 4A</div><h2>Reading Comprehension</h2></div>`;
+    html += `<div class="passage-box">${escapeHtml(state.readingPassage)}</div>`;
+    state.readingMcQuestions.forEach((q, i) => {
+      html += buildQuestionCard(q, i, 'reading');
+    });
+    html += `<div style="text-align:center;margin-top:16px">
+      <button class="btn btn-primary" id="btn-to-open" onclick="goToOpen()" disabled>
+        Continue to Written Response →
+      </button>
+    </div>`;
+    container.innerHTML = html;
+    checkReadingComplete();
+    showScreen('screen-reading');
+    window.scrollTo(0, 0);
+  }
+
+  // ── Open response ───────────────────────────────────────────────────────────
+  function goToOpen() {
+    document.getElementById('open-passage-box').textContent = state.readingPassage;
+    document.getElementById('open-question-text').textContent = state.openQuestion;
+    showScreen('screen-open');
+    window.scrollTo(0, 0);
+  }
+
+  // ── Submit quiz ─────────────────────────────────────────────────────────────
+  async function submitQuiz() {
+    const openResp = document.getElementById('open-response-input').value.trim();
+    if (!openResp) { toast('Please write your response before submitting.'); return; }
+
+    const timeMs = stopTimer();
+    const totalMc = state.mcQuestions.length + state.readingMcQuestions.length;
+    const totalScore = state.mcScore + state.readingMcScore;
+
+    // Build simplified catJson
+    const catSimple = {};
+    Object.entries(state.catScores).forEach(([k, v]) => {
+      if (v.t > 0) catSimple[k] = { c: v.c, t: v.t };
+    });
+
+    showScreen('screen-loading');
+    try {
+      const resp = await fetch('/api/quiz/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId:    state.sessionId,
+          mcScore:      totalScore,
+          mcTotal:      totalMc,
+          openResponse: openResp,
+          timeMs,
+          catJson:      JSON.stringify(catSimple),
+        }),
+      });
+      if (!resp.ok) throw new Error('server error');
+      showResultsScreen(totalScore, totalMc, catSimple);
+    } catch (e) {
+      toast('Error submitting. Please try again.');
+      showScreen('screen-open');
+    }
+  }
+
+  // ── Results screen ──────────────────────────────────────────────────────────
+  function showResultsScreen(score, total, cats) {
+    const pct = total > 0 ? Math.round((score / total) * 100) : 0;
+    document.getElementById('score-pct-display').textContent = pct + '%';
+
+    let heading = 'Great effort!';
+    if (pct >= 90) heading = '🏆 Excellent work!';
+    else if (pct >= 75) heading = '⭐ Good job!';
+    else if (pct >= 60) heading = '📚 Keep practicing!';
+    else heading = '💪 Study harder — you\'ve got this!';
+    document.getElementById('score-heading').textContent = heading;
+    document.getElementById('score-sub').textContent =
+      `${score} / ${total} multiple choice correct (${pct}%) · Written response pending review`;
+
+    // Category breakdown
+    let catHtml = '<h3>Performance by Category</h3>';
+    Object.entries(cats).forEach(([name, v]) => {
+      const p = v.t > 0 ? Math.round((v.c / v.t) * 100) : 0;
+      catHtml += `<div class="cat-row">
+        <div class="cat-name">${name}</div>
+        <div class="cat-bar-outer"><div class="cat-bar-inner" style="width:${p}%"></div></div>
+        <div class="cat-score">${v.c}/${v.t}</div>
+      </div>`;
+    });
+    document.getElementById('cat-breakdown').innerHTML = catHtml;
+
+    // Update progress to 100%
+    updateProgress(state.mcQuestions.length + state.readingMcQuestions.length + 1,
+                   state.mcQuestions.length + state.readingMcQuestions.length + 1);
+
+    showScreen('screen-score');
+    window.scrollTo(0, 0);
+  }
+</script>
+</body>
+</html>
