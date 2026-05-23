@@ -11,7 +11,7 @@ const quizRoutes   = require('./src/quizRoutes');
 const adminRoutes  = require('./src/adminRoutes');
 
 const app  = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 
 // ── Security headers ──────────────────────────────────────────────────────────
 app.use(helmet({

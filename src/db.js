@@ -9,10 +9,22 @@ function getPool() {
 }
 
 async function initDb() {
+  // DigitalOcean injects DATABASE_URL with sslmode=require.
+  // We must pass ssl config separately and set rejectUnauthorized: false
+  // because DO uses a self-signed CA that Node won't trust by default.
+  const sslConfig = process.env.DATABASE_URL && process.env.DATABASE_URL.includes('sslmode')
+    ? { rejectUnauthorized: false }                        // DO managed DB — skip cert verify
+    : (process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false);
+
+  // Strip sslmode from the URL so pg doesn't double-configure SSL
+  const connectionString = (process.env.DATABASE_URL || '')
+    .replace(/[?&]sslmode=[^&]*/g, '')
+    .replace(/[?&]ssl=[^&]*/g, '')
+    .replace(/\?$/, '');
+
   pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    // DigitalOcean Managed PostgreSQL requires SSL in production
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    connectionString: connectionString || process.env.DATABASE_URL,
+    ssl: sslConfig,
   });
 
   // Verify connection
