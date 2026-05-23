@@ -164,6 +164,28 @@
     .log-row .chosen  { color: var(--muted); font-size: 0.78rem; }
     .log-row .answer  { color: var(--green); font-size: 0.78rem; }
 
+    .reading-passage-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-left: 3px solid #4fc3f7;
+      border-radius: 0 var(--radius) var(--radius) 0;
+      padding: 14px 18px;
+      line-height: 1.75;
+      font-size: 0.88rem;
+      white-space: pre-wrap;
+      margin-bottom: 10px;
+      color: var(--text);
+    }
+    .open-q-box {
+      background: rgba(124,77,255,0.1);
+      border: 1px solid rgba(124,77,255,0.35);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      font-size: 0.88rem;
+      font-style: italic;
+      color: #c4b5fd;
+      margin-bottom: 14px;
+    }
     .open-response-box {
       background: var(--card);
       border: 1px solid var(--border);
@@ -173,8 +195,19 @@
       line-height: 1.6;
       font-size: 0.9rem;
       white-space: pre-wrap;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
+    .rubric-box {
+      background: rgba(0,200,150,0.07);
+      border: 1px solid rgba(0,200,150,0.25);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      font-size: 0.81rem;
+      margin-bottom: 14px;
+      line-height: 1.7;
+    }
+    .rubric-box strong { color: var(--green); margin-right: 4px; }
+    .rubric-box .rubric-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 6px; }
     .grade-form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .grade-form label { font-size: 0.85rem; color: var(--muted); }
     .grade-form select, .grade-form input[type=text] {
@@ -305,6 +338,7 @@
       <div class="toolbar">
         <h2>All Attempts (${sessions.length})</h2>
         <a href="/api/admin/export.csv" class="btn btn-muted" download>⬇ Export CSV</a>
+        <button class="btn btn-red" onclick="regradeAll()" title="Reset all open-response scores so you can re-grade with the new 0–3 rubric">↺ Regrade All Open</button>
         <button class="btn btn-primary" onclick="loadDashboard()">↻ Refresh</button>
       </div>
 
@@ -335,7 +369,7 @@
       const pctColor = pct === null ? '' : pct >= 75 ? 'var(--green)' : pct >= 60 ? 'var(--yellow)' : 'var(--red)';
       const date = s.started_at ? new Date(s.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
       const timeStr = s.time_ms ? formatTime(s.time_ms) : '—';
-      const openStr = s.open_score !== null && s.open_score !== undefined ? `${s.open_score}/5` : 'Pending';
+      const openStr = s.open_score !== null && s.open_score !== undefined ? `${s.open_score}/3` : 'Pending';
       const statusBadge = !isComplete
         ? '<span class="badge badge-muted">In Progress</span>'
         : s.reviewed
@@ -417,6 +451,14 @@
       </div>`;
     });
 
+    // Reading passage + open question
+    const passageHtml = data.readingPassage
+      ? `<div class="reading-passage-box">${escH(data.readingPassage)}</div>`
+      : '';
+    const openQHtml = data.openQuestion
+      ? `<div class="open-q-box">❓ ${escH(data.openQuestion)}</div>`
+      : '';
+
     const openHtml = data.open_response
       ? `<div class="open-response-box">${escH(data.open_response)}</div>`
       : '<p style="color:var(--muted);margin-bottom:16px">No response submitted.</p>';
@@ -436,12 +478,25 @@
       </div>
 
       <div class="detail-section">
-        <h3>Open Response</h3>
+        <h3>Reading Passage (Version ${data.version})</h3>
+        ${passageHtml || '<p style="color:var(--muted)">Passage not available.</p>'}
+        ${openQHtml}
+
+        <h3 style="margin-top:4px">Student's Open Response</h3>
         ${openHtml}
+
+        <div class="rubric-box">
+          <div class="rubric-title">Grading Rubric</div>
+          <div><strong>0 pts</strong> No attempt to answer the question</div>
+          <div><strong>1 pt &nbsp;</strong> Uses a few words to respond / present tense</div>
+          <div><strong>2 pts</strong> Responds in a basic sentence using imperfect</div>
+          <div><strong>3 pts</strong> Responds in a full sentence in the imperfect tense with added details</div>
+        </div>
+
         <div class="grade-form">
-          <label>Score (0–5):</label>
+          <label>Score (0–3):</label>
           <select id="grade-score">
-            ${[0,1,2,3,4,5].map(n => `<option value="${n}" ${n == currentOpenScore ? 'selected' : ''}>${n}</option>`).join('')}
+            ${[0,1,2,3].map(n => `<option value="${n}" ${n == currentOpenScore ? 'selected' : ''}>${n} pt${n !== 1 ? 's' : ''}</option>`).join('')}
           </select>
           <label>Notes:</label>
           <input type="text" id="grade-notes" placeholder="Optional feedback…" value="${escH(currentNotes)}" />
@@ -473,6 +528,20 @@
         toast('Grade saved!');
         loadDashboard();    // refresh table in background
       } else { toast('Save failed.'); }
+    } catch { toast('Network error.'); }
+  }
+
+  async function regradeAll() {
+    if (!confirm('This will reset ALL open-response scores and mark every attempt as "Needs Review" so you can re-grade them with the new 0–3 rubric.\n\nContinue?')) return;
+    try {
+      const r = await fetch('/api/admin/regrade-all', { method: 'POST' });
+      const d = await r.json();
+      if (r.ok) {
+        toast(`✅ Reset ${d.count} attempt${d.count !== 1 ? 's' : ''} — ready to re-grade`);
+        loadDashboard();
+      } else {
+        toast('Reset failed.');
+      }
     } catch { toast('Network error.'); }
   }
 

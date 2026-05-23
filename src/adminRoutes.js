@@ -1,7 +1,8 @@
 'use strict';
-const express  = require('express');
-const bcrypt   = require('bcryptjs');
-const db       = require('./db');
+const express     = require('express');
+const bcrypt      = require('bcryptjs');
+const db          = require('./db');
+const { getReading } = require('./readings');
 
 const router = express.Router();
 
@@ -73,6 +74,17 @@ router.get('/session/:id', requireAuth, async (req, res) => {
   try {
     const detail = await db.getSessionDetail(req.params.id);
     if (!detail) return res.status(404).json({ error: 'Not found' });
+
+    // Attach the reading passage + open question so admin can see them while grading
+    try {
+      const reading = getReading(detail.version);
+      detail.readingPassage = reading.passage;
+      detail.openQuestion   = reading.openQ;
+    } catch (_) {
+      detail.readingPassage = null;
+      detail.openQuestion   = null;
+    }
+
     res.json(detail);
   } catch (err) {
     console.error('admin/session error:', err);
@@ -85,13 +97,26 @@ router.post('/grade/:id', requireAuth, async (req, res) => {
   try {
     const { score, notes } = req.body;
     const s = parseInt(score, 10);
-    if (isNaN(s) || s < 0 || s > 5) {
-      return res.status(400).json({ error: 'Score must be 0-5' });
+    if (isNaN(s) || s < 0 || s > 3) {
+      return res.status(400).json({ error: 'Score must be 0-3' });
     }
     await db.gradeOpenResponse(req.params.id, s, (notes || '').slice(0, 1000));
     res.json({ ok: true });
   } catch (err) {
     console.error('admin/grade error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── POST /api/admin/regrade-all ───────────────────────────────────────────────
+// Resets open_score and reviewed on all completed sessions so they can be
+// re-graded with the updated rubric.
+router.post('/regrade-all', requireAuth, async (req, res) => {
+  try {
+    const count = await db.resetAllOpenScores();
+    res.json({ ok: true, count });
+  } catch (err) {
+    console.error('admin/regrade-all error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

@@ -132,6 +132,14 @@ async function gradeOpenResponse(id, score, notes) {
   );
 }
 
+async function resetAllOpenScores() {
+  const r = await getPool().query(
+    `UPDATE sessions SET open_score = NULL, admin_notes = NULL, reviewed = 0
+     WHERE completed_at IS NOT NULL`
+  );
+  return r.rowCount;
+}
+
 async function deleteSession(id) {
   const p = getPool();
   await p.query('DELETE FROM question_log WHERE session_id = $1', [id]);
@@ -181,5 +189,6 @@ async function getStats() {
 
 module.exports = {
   initDb, createSession, getSession, completeSession, logAnswer,
-  getAllSessions, getSessionDetail, gradeOpenResponse, deleteSession, getStats,
+  getAllSessions, getSessionDetail, gradeOpenResponse, resetAllOpenScores,
+  deleteSession, getStats,
 };
