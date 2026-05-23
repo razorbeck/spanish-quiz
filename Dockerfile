@@ -1,6 +1,5 @@
 FROM node:20-alpine
 
-# Create app directory
 WORKDIR /app
 
 # Install dependencies first (layer caching)
@@ -10,17 +9,14 @@ RUN npm ci --omit=dev
 # Copy source
 COPY . .
 
-# Create data directory (will be replaced by persistent volume in DO)
-RUN mkdir -p /var/data
-
 # Non-root user for security
 RUN addgroup -S quizapp && adduser -S quizapp -G quizapp
-RUN chown -R quizapp:quizapp /app /var/data
+RUN chown -R quizapp:quizapp /app
 USER quizapp
 
-EXPOSE 3000
+EXPOSE 8080
 
 ENV NODE_ENV=production
-ENV DB_DIR=/var/data
+ENV PORT=8080
 
 CMD ["node", "server.js"]

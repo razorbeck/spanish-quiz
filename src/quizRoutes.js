@@ -26,14 +26,14 @@ function sample(arr, n) {
 
 /**
  * Prepare a question for the client.
- * Shuffles the options, tracks the new correct index,
- * returns { id, section, question, options }  — NO correct answer or explanation.
+ * Shuffles the options, tracks the new correct index server-side.
+ * Returns { clientQ, correctIndex, correctText, explanation, originalQuestion }
+ * — clientQ has NO correct answer or explanation.
  */
 function prepareForClient(q) {
   const indices = shuffle([0, 1, 2, 3]);
   const shuffledOptions = indices.map(i => q.options[i]);
   const newCorrectIndex = indices.indexOf(q.correct);
-  // Store the shuffled correct index in server memory alongside session answers
   return {
     clientQ: { id: q.id, section: q.section, question: q.question, options: shuffledOptions },
     correctIndex: newCorrectIndex,
@@ -45,8 +45,7 @@ function prepareForClient(q) {
 
 /**
  * Build a full MC set for a session:
- *   10 Fiesta Fatal  |  8 Preterite  |  8 Imperfect  |  4 Vocabulary
- * (totals 30 — adjust constants below if teacher changes the format)
+ *   10 Fiesta Fatal  |  8 Preterite  |  8 Imperfect  |  4 Vocabulary  = 30 total
  */
 const DRAW = { ff: 10, pre: 8, imp: 8, voc: 4 };
 
@@ -60,61 +59,57 @@ function buildQuestionSet() {
   return raw.map(prepareForClient);
 }
 
-// ── In-memory session answer store ───────────────────────────────────────────
-// Maps sessionId → array of prepared question metadata (correctIndex, explanation, etc.)
-// This prevents any answer data from being persisted to the client.
+// ── In-memory session answer store ────────────────────────────────────────────
+// Correct answers live only here — never sent to the client.
 const SESSION_ANSWERS = new Map();
 
-// Prune old entries every 30 min to prevent memory leak
+// Prune stale entries every 30 min
 setInterval(() => {
-  const cutoff = Date.now() - 2 * 60 * 60 * 1000; // 2 hours
-  for (const [key] of SESSION_ANSWERS) {
-    const [, ts] = key.split(':');
-    if (parseInt(ts, 10) < cutoff) SESSION_ANSWERS.delete(key);
+  const cutoff = Date.now() - 2 * 60 * 60 * 1000;
+  for (const [id, store] of SESSION_ANSWERS) {
+    if (store.timestamp < cutoff) SESSION_ANSWERS.delete(id);
   }
 }, 30 * 60 * 1000);
 
-// ── POST /api/quiz/start ───────────────────────────────────────────────────────
-router.post('/start', (req, res) => {
+// ── POST /api/quiz/start ──────────────────────────────────────────────────────
+router.post('/start', async (req, res) => {
   try {
     const studentName = (req.body.studentName || 'Student').trim().slice(0, 60);
-    // Version: 1-10; random if not supplied
     let version = parseInt(req.body.version, 10);
     if (!version || version < 1 || version > 10) {
       version = Math.floor(Math.random() * 10) + 1;
     }
 
     const sessionId = uuidv4();
-    db.createSession(sessionId, studentName, version);
+    await db.createSession(sessionId, studentName, version);
 
-    // Build MC questions
+    // Build MC questions (answers stay server-side)
     const prepared = buildQuestionSet();
     const clientQuestions = prepared.map(p => p.clientQ);
 
-    // Build reading section (MC + open prompt)
+    // Build reading section
     const reading = getReading(version);
     const preparedReading = reading.mc.map(prepareForClient);
     const readingClientQs = preparedReading.map(p => p.clientQ);
 
-    // Store answer key in memory (keyed by sessionId)
     SESSION_ANSWERS.set(sessionId, {
-      mc:      prepared,
-      reading: preparedReading,
+      mc:             prepared,
+      reading:        preparedReading,
       readingPassage: reading.passage,
-      openQ:   reading.openQ,
-      answered: new Set(),  // track which q indices have been answered
-      timestamp: Date.now(),
+      openQ:          reading.openQ,
+      answered:       new Set(),
+      timestamp:      Date.now(),
     });
 
     res.json({
       sessionId,
       studentName,
       version,
-      mcQuestions: clientQuestions,
-      readingPassage: reading.passage,
+      mcQuestions:        clientQuestions,
+      readingPassage:     reading.passage,
       readingMcQuestions: readingClientQs,
-      openQuestion: reading.openQ,
-      mcTotal: clientQuestions.length,
+      openQuestion:       reading.openQ,
+      mcTotal:            clientQuestions.length,
     });
   } catch (err) {
     console.error('quiz/start error:', err);
@@ -124,11 +119,10 @@ router.post('/start', (req, res) => {
 
 // ── POST /api/quiz/answer ─────────────────────────────────────────────────────
 // Body: { sessionId, pool: 'mc'|'reading', qIndex: number, chosen: number }
-router.post('/answer', (req, res) => {
+router.post('/answer', async (req, res) => {
   try {
     const { sessionId, pool, qIndex, chosen } = req.body;
 
-    // Basic input validation
     if (!sessionId || !['mc', 'reading'].includes(pool) ||
         typeof qIndex !== 'number' || typeof chosen !== 'number') {
       return res.status(400).json({ error: 'Invalid request' });
@@ -138,9 +132,7 @@ router.post('/answer', (req, res) => {
     if (!store) return res.status(404).json({ error: 'Session not found' });
 
     const key = `${pool}:${qIndex}`;
-    if (store.answered.has(key)) {
-      return res.status(409).json({ error: 'Already answered' });
-    }
+    if (store.answered.has(key)) return res.status(409).json({ error: 'Already answered' });
     store.answered.add(key);
 
     const prepared = store[pool][qIndex];
@@ -148,22 +140,22 @@ router.post('/answer', (req, res) => {
 
     const isCorrect = chosen === prepared.correctIndex;
 
-    // Log to DB
+    // Fire-and-forget log (don't block the response)
     db.logAnswer({
       sessionId,
       qIndex,
-      section: prepared.clientQ.section,
-      question: prepared.originalQuestion,
-      chosen:   prepared.clientQ.options[chosen] ?? '(no answer)',
-      correctAns: prepared.correctText,
+      section:     prepared.clientQ.section,
+      question:    prepared.originalQuestion,
+      chosen:      prepared.clientQ.options[chosen] ?? '(no answer)',
+      correctAns:  prepared.correctText,
       isCorrect,
       explanation: prepared.explanation,
-    });
+    }).catch(e => console.error('logAnswer error:', e));
 
     res.json({
-      correct:     isCorrect,
+      correct:      isCorrect,
       correctIndex: prepared.correctIndex,
-      explanation: prepared.explanation,
+      explanation:  prepared.explanation,
     });
   } catch (err) {
     console.error('quiz/answer error:', err);
@@ -173,7 +165,7 @@ router.post('/answer', (req, res) => {
 
 // ── POST /api/quiz/complete ───────────────────────────────────────────────────
 // Body: { sessionId, mcScore, mcTotal, openResponse, timeMs, catJson }
-router.post('/complete', (req, res) => {
+router.post('/complete', async (req, res) => {
   try {
     const { sessionId, mcScore, mcTotal, openResponse, timeMs, catJson } = req.body;
 
@@ -182,11 +174,10 @@ router.post('/complete', (req, res) => {
     const store = SESSION_ANSWERS.get(sessionId);
     if (!store) return res.status(404).json({ error: 'Session not found or already completed' });
 
-    // Compute true server-side score from logs (prevents score tampering)
-    const session = db.getSession(sessionId);
+    const session = await db.getSession(sessionId);
     if (!session) return res.status(404).json({ error: 'DB session not found' });
 
-    db.completeSession({
+    await db.completeSession({
       id:           sessionId,
       mcScore:      parseInt(mcScore, 10) || 0,
       mcTotal:      parseInt(mcTotal, 10) || 0,
@@ -196,7 +187,6 @@ router.post('/complete', (req, res) => {
       catJson:      typeof catJson === 'string' ? catJson : JSON.stringify(catJson || {}),
     });
 
-    // Clean up in-memory store
     SESSION_ANSWERS.delete(sessionId);
 
     res.json({ ok: true, message: 'Quiz submitted successfully!' });

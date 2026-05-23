@@ -1,20 +1,12 @@
 # Deploying to DigitalOcean App Platform
 
-This guide walks you through deploying the Spanish Quiz app on DigitalOcean App Platform using Docker.
-
----
-
-## Prerequisites
-
-- A DigitalOcean account (digitalocean.com)
-- Git installed on your computer
-- Node.js 18+ (for generating the bcrypt hash locally)
+This app uses **PostgreSQL** (DigitalOcean Managed Database) for persistent storage — no volumes needed.
 
 ---
 
 ## Step 1 — Generate a secure admin password hash
 
-Run this once on your computer to turn your chosen password into a bcrypt hash:
+Run this once on your computer:
 
 ```bash
 cd spanish-quiz-app
@@ -22,14 +14,11 @@ npm install
 node -e "const b=require('bcryptjs'); b.hash('YourChosenPassword',12).then(console.log)"
 ```
 
-Copy the output hash — it looks like `$2a$12$...`. You'll paste it into DigitalOcean's environment variables.
+Copy the `$2a$12$...` output — you'll paste it into DigitalOcean.
 
 ---
 
-## Step 2 — Push to GitHub
-
-1. Create a new **private** GitHub repository (private is important — keep answers off the internet)
-2. From the `spanish-quiz-app` folder:
+## Step 2 — Push to a private GitHub repo
 
 ```bash
 git init
@@ -39,102 +28,111 @@ git remote add origin https://github.com/YOUR_USERNAME/spanish-quiz.git
 git push -u origin main
 ```
 
-Make sure `.gitignore` is committed first so `.env` and `data/` are excluded.
+Make sure to create the repo as **Private** on GitHub first.
 
 ---
 
-## Step 3 — Create the App on DigitalOcean
+## Step 3 — Create a Managed PostgreSQL Database
 
-1. Log in to **cloud.digitalocean.com**
-2. Click **Create → Apps**
-3. Choose **GitHub** as your source
-4. Select your `spanish-quiz` repo, branch `main`
-5. DigitalOcean will detect the `Dockerfile` automatically
-6. Choose the **Basic** plan ($5/month is sufficient)
-7. Set the **HTTP Port** to `8080`
-
----
-
-## Step 4 — Add Environment Variables
-
-In the App settings, go to **App-Level Environment Variables** and add:
-
-| Key | Value |
-|-----|-------|
-| `NODE_ENV` | `production` |
-| `PORT` | `8080` |
-| `SESSION_SECRET` | *(run: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`)* |
-| `ADMIN_PASSWORD_HASH` | *(the `$2a$12$...` hash from Step 1)* |
-| `DB_DIR` | `/var/data` |
-
-Mark `SESSION_SECRET` and `ADMIN_PASSWORD_HASH` as **Encrypted**.
+1. In your DigitalOcean dashboard, click **Create → Databases**
+2. Choose **PostgreSQL** (latest version is fine)
+3. Pick the **$15/month** plan (smallest available)
+4. Choose the same region you'll use for your app (e.g., New York)
+5. Name it something like `spanish-quiz-db`
+6. Click **Create Database Cluster** — takes about 1-2 minutes
 
 ---
 
-## Step 5 — Add a Persistent Volume
+## Step 4 — Create the App
 
-The SQLite database must survive redeploys. Without a volume, scores are lost every time the app restarts.
-
-1. In App settings, go to **Components → your web service → Storage**
-2. Click **Attach Storage Volume**
-3. Set Mount Path: `/var/data`
-4. Size: 1 GB is plenty
-5. Save
+1. Click **Create → Apps**
+2. Choose **GitHub** as your source
+3. Select your `spanish-quiz` repo, branch `main`
+4. DigitalOcean detects the `Dockerfile` automatically
+5. Choose the **Basic** plan ($5/month)
+6. Set **HTTP Port** to `8080`
 
 ---
 
-## Step 6 — Deploy
+## Step 5 — Attach the Database
 
-Click **Deploy**. DigitalOcean will build your Docker image and launch it. Takes about 2-3 minutes.
+1. Still in the app creation wizard, look for **Add a Database**  
+   *(or go to: App → Settings → App-Level → Add Component → Database)*
+2. Select **Previously Created Database**
+3. Choose the `spanish-quiz-db` cluster you just made
+4. DigitalOcean will automatically inject a `DATABASE_URL` environment variable into your app — you don't need to copy/paste the connection string manually
 
-Your app will be available at a URL like:
+---
+
+## Step 6 — Add Environment Variables
+
+In the App settings under **App-Level Environment Variables**, add:
+
+| Key | Value | Encrypted? |
+|-----|-------|-----------|
+| `NODE_ENV` | `production` | No |
+| `PORT` | `8080` | No |
+| `SESSION_SECRET` | *(run: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`)* | **Yes** |
+| `ADMIN_PASSWORD_HASH` | *(the `$2a$12$...` hash from Step 1)* | **Yes** |
+
+> `DATABASE_URL` is injected automatically by DigitalOcean when you attach the database — don't add it manually.
+
+---
+
+## Step 7 — Deploy
+
+Click **Deploy**. DigitalOcean builds the Docker image and launches it. Takes about 2-3 minutes.
+
+Your app will be at something like:
 `https://spanish-quiz-abc123.ondigitalocean.app`
 
 ---
 
-## Step 7 — Test it
+## Step 8 — Test it
 
 1. Open the app URL — you should see the quiz start screen
-2. Take a test quiz as Bmylo
+2. Take a quick test as "Bmylo"
 3. Go to `https://your-app-url/admin`
-4. Log in with the password you chose in Step 1
-5. Verify the attempt appears and you can grade the open response
+4. Log in with your chosen password
+5. Confirm the attempt appears and open response grading works
 
 ---
 
 ## Updating the app
 
-Push changes to GitHub → DigitalOcean auto-deploys on every push to `main`.
+Push to the `main` branch on GitHub — DigitalOcean auto-deploys.
 
 ---
 
 ## Customizing questions
 
-All questions and passages live in:
+All questions and passages live server-side:
 - `src/questions.js` — 110 MC questions (Fiesta Fatal, Preterite, Imperfect, Vocab)
 - `src/readings.js` — 10 reading passages (one per version)
 
-Edit those files, commit, and push. The question bank is **server-side only** — Bmylo can never see them in the browser.
+Edit, commit, push. Bmylo's browser never sees these files.
 
 ---
 
-## Security notes
+## Local development
+
+```bash
+# Create a .env file from the template
+cp .env.example .env
+# Edit .env — set DATABASE_URL to a local Postgres instance
+# and ADMIN_PASSWORD to something simple
+
+npm install
+npm run dev    # uses nodemon for auto-restart
+```
+
+---
+
+## Security summary
 
 - Correct answers never leave the server
-- Admin panel is behind bcrypt-hashed password + httpOnly session cookie
+- Admin panel: bcrypt-hashed password + httpOnly session cookie (4hr expiration)
 - Rate limiting: 300 req/15min on quiz API, 100 req/15min on admin
-- Helmet.js sets strict Content-Security-Policy headers
-- Source maps are blocked from being served
-- SQLite WAL mode for safe concurrent writes
-
----
-
-## Troubleshooting
-
-**App crashes on startup**: Check that all environment variables are set, especially `SESSION_SECRET` and `DB_DIR`.
-
-**Database errors**: Make sure the persistent volume is attached at `/var/data`.
-
-**Admin password not working**: Make sure `ADMIN_PASSWORD_HASH` is set (not `ADMIN_PASSWORD`) in production. The plain-text fallback is only for development.
-
-**Questions look different every session**: This is by design — the server randomly samples from the question bank each time.
+- Helmet.js with strict CSP headers
+- Source maps blocked from being served
+- PostgreSQL with SSL enforced in production

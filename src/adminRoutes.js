@@ -17,25 +17,20 @@ router.post('/login', async (req, res) => {
     const { password } = req.body;
     if (!password) return res.status(400).json({ error: 'Password required' });
 
-    const adminHash = process.env.ADMIN_PASSWORD_HASH;
+    const adminHash  = process.env.ADMIN_PASSWORD_HASH;
     const adminPlain = process.env.ADMIN_PASSWORD;
 
     let valid = false;
-
     if (adminHash) {
-      // Preferred: compare against bcrypt hash stored in env
       valid = await bcrypt.compare(password, adminHash);
     } else if (adminPlain) {
-      // Fallback: plain-text comparison (dev/first-boot only)
       valid = password === adminPlain;
     } else {
-      // No password configured — deny all
       return res.status(503).json({ error: 'Admin credentials not configured' });
     }
 
     if (!valid) {
-      // Add a small delay to slow brute-force
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 500)); // slow brute-force
       return res.status(403).json({ error: 'Invalid password' });
     }
 
@@ -54,9 +49,9 @@ router.post('/logout', requireAuth, (req, res) => {
 });
 
 // ── GET /api/admin/stats ──────────────────────────────────────────────────────
-router.get('/stats', requireAuth, (req, res) => {
+router.get('/stats', requireAuth, async (req, res) => {
   try {
-    res.json(db.getStats());
+    res.json(await db.getStats());
   } catch (err) {
     console.error('admin/stats error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -64,9 +59,9 @@ router.get('/stats', requireAuth, (req, res) => {
 });
 
 // ── GET /api/admin/sessions ───────────────────────────────────────────────────
-router.get('/sessions', requireAuth, (req, res) => {
+router.get('/sessions', requireAuth, async (req, res) => {
   try {
-    res.json(db.getAllSessions());
+    res.json(await db.getAllSessions());
   } catch (err) {
     console.error('admin/sessions error:', err);
     res.status(500).json({ error: 'Server error' });
@@ -74,9 +69,9 @@ router.get('/sessions', requireAuth, (req, res) => {
 });
 
 // ── GET /api/admin/session/:id ────────────────────────────────────────────────
-router.get('/session/:id', requireAuth, (req, res) => {
+router.get('/session/:id', requireAuth, async (req, res) => {
   try {
-    const detail = db.getSessionDetail(req.params.id);
+    const detail = await db.getSessionDetail(req.params.id);
     if (!detail) return res.status(404).json({ error: 'Not found' });
     res.json(detail);
   } catch (err) {
@@ -86,15 +81,14 @@ router.get('/session/:id', requireAuth, (req, res) => {
 });
 
 // ── POST /api/admin/grade/:id ─────────────────────────────────────────────────
-// Body: { score: number (0-5), notes: string }
-router.post('/grade/:id', requireAuth, (req, res) => {
+router.post('/grade/:id', requireAuth, async (req, res) => {
   try {
     const { score, notes } = req.body;
     const s = parseInt(score, 10);
     if (isNaN(s) || s < 0 || s > 5) {
       return res.status(400).json({ error: 'Score must be 0-5' });
     }
-    db.gradeOpenResponse(req.params.id, s, (notes || '').slice(0, 1000));
+    await db.gradeOpenResponse(req.params.id, s, (notes || '').slice(0, 1000));
     res.json({ ok: true });
   } catch (err) {
     console.error('admin/grade error:', err);
@@ -103,9 +97,9 @@ router.post('/grade/:id', requireAuth, (req, res) => {
 });
 
 // ── DELETE /api/admin/session/:id ─────────────────────────────────────────────
-router.delete('/session/:id', requireAuth, (req, res) => {
+router.delete('/session/:id', requireAuth, async (req, res) => {
   try {
-    db.deleteSession(req.params.id);
+    await db.deleteSession(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     console.error('admin/delete error:', err);
@@ -114,9 +108,9 @@ router.delete('/session/:id', requireAuth, (req, res) => {
 });
 
 // ── GET /api/admin/export.csv ─────────────────────────────────────────────────
-router.get('/export.csv', requireAuth, (req, res) => {
+router.get('/export.csv', requireAuth, async (req, res) => {
   try {
-    const sessions = db.getAllSessions();
+    const sessions = await db.getAllSessions();
     const rows = [
       ['ID', 'Student', 'Version', 'Started', 'Completed', 'MC Score', 'MC Total', 'MC %', 'Open Score', 'Reviewed', 'Time (s)'],
       ...sessions.map(s => [
@@ -133,7 +127,9 @@ router.get('/export.csv', requireAuth, (req, res) => {
         s.time_ms ? Math.round(s.time_ms / 1000) : '',
       ])
     ];
-    const csv = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+    const csv = rows.map(r =>
+      r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+    ).join('\r\n');
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="quiz-results.csv"');
     res.send(csv);
