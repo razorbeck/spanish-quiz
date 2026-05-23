@@ -13,6 +13,9 @@ const adminRoutes  = require('./src/adminRoutes');
 const app  = express();
 const PORT = process.env.PORT || 8080;
 
+// ── Trust DigitalOcean's proxy (fixes express-rate-limit X-Forwarded-For error)
+app.set('trust proxy', 1);
+
 // ── Security headers ──────────────────────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {

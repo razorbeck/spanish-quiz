@@ -86,6 +86,7 @@ router.post('/start', async (req, res) => {
     // Build MC questions (answers stay server-side)
     const prepared = buildQuestionSet();
     const clientQuestions = prepared.map(p => p.clientQ);
+    console.log(`[quiz/start] v${version} — ${clientQuestions.length} MC questions, sections: ${[...new Set(clientQuestions.map(q=>q.section))].join(', ')}`);
 
     // Build reading section
     const reading = getReading(version);
