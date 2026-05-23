@@ -411,11 +411,11 @@
     mcScore: 0,
     readingMcScore: 0,
     catScores: {
-      'Fiesta Fatal': { c: 0, t: 0 },
-      'Preterite':    { c: 0, t: 0 },
-      'Imperfect':    { c: 0, t: 0 },
-      'Vocabulary':   { c: 0, t: 0 },
-      'Reading':      { c: 0, t: 0 },
+      'Fiesta Fatal': { c: 0, t: 0 },  // mapped from 'Fiesta Fatal — Characters & Events'
+      'Preterite':    { c: 0, t: 0 },  // mapped from 'Preterite Conjugation'
+      'Imperfect':    { c: 0, t: 0 },  // mapped from 'Imperfect Conjugation'
+      'Vocabulary':   { c: 0, t: 0 },  // mapped from 'Vocabulary'
+      'Reading':      { c: 0, t: 0 },  // mapped from 'READING'
     },
     timerInterval: null,
     startTime: null,
@@ -458,24 +458,21 @@
     return Date.now() - state.startTime;
   }
 
+  // These must match the actual section strings in questions.js
+  const SECTION_LABELS = {
+    'Fiesta Fatal — Characters & Events': 'Fiesta Fatal',
+    'Preterite Conjugation':              'Preterite',
+    'Imperfect Conjugation':              'Imperfect',
+    'Vocabulary':                         'Vocabulary',
+    'READING':                            'Reading',
+  };
+
   function sectionLabel(section) {
-    if (section === 'FIESTA_FATAL') return 'Fiesta Fatal';
-    if (section === 'PRETERITE')    return 'Preterite';
-    if (section === 'IMPERFECT')    return 'Imperfect';
-    if (section === 'VOCABULARY')   return 'Vocabulary';
-    if (section === 'READING')      return 'Reading';
-    return section;
+    return SECTION_LABELS[section] || section;
   }
 
   function catKey(section) {
-    const map = {
-      FIESTA_FATAL: 'Fiesta Fatal',
-      PRETERITE:    'Preterite',
-      IMPERFECT:    'Imperfect',
-      VOCABULARY:   'Vocabulary',
-      READING:      'Reading',
-    };
-    return map[section] || section;
+    return SECTION_LABELS[section] || section;
   }
 
   // ── Start quiz ──────────────────────────────────────────────────────────────
@@ -516,9 +513,9 @@
   function buildMcScreen() {
     const container = document.getElementById('mc-content');
     const sections = [
-      { label: 'Section 1', title: 'Fiesta Fatal — Events & Characters', keys: ['FIESTA_FATAL'] },
-      { label: 'Section 2', title: 'Verb Conjugation — Preterite & Imperfect', keys: ['PRETERITE', 'IMPERFECT'] },
-      { label: 'Section 3', title: 'Vocabulary', keys: ['VOCABULARY'] },
+      { label: 'Section 1', title: 'Fiesta Fatal — Events & Characters', keys: ['Fiesta Fatal — Characters & Events'] },
+      { label: 'Section 2', title: 'Verb Conjugation — Preterite & Imperfect', keys: ['Preterite Conjugation', 'Imperfect Conjugation'] },
+      { label: 'Section 3', title: 'Vocabulary', keys: ['Vocabulary'] },
     ];
 
     // Group questions by section
