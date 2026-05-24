@@ -6,9 +6,11 @@ const session      = require('express-session');
 const cookieParser = require('cookie-parser');
 const rateLimit    = require('express-rate-limit');
 const path         = require('path');
-const { initDb }   = require('./src/db');
-const quizRoutes   = require('./src/quizRoutes');
-const adminRoutes  = require('./src/adminRoutes');
+const { initDb }             = require('./src/db');
+const db                     = require('./src/db');
+const { generateStudyGuide } = require('./src/studyGuide');
+const quizRoutes             = require('./src/quizRoutes');
+const adminRoutes            = require('./src/adminRoutes');
 
 const app  = express();
 const PORT = process.env.PORT || 8080;
@@ -68,6 +70,20 @@ app.use('/api/admin', adminRoutes);
 // ── Admin page ────────────────────────────────────────────────────────────────
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// ── Public study guide (no auth — Dylan uses this before every test) ──────────
+app.get('/study-guide', async (req, res) => {
+  try {
+    const { logs, sessions } = await db.getAllLogsAggregated();
+    const html = generateStudyGuide({ logs, sessions });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(html);
+  } catch (err) {
+    console.error('study-guide error:', err);
+    res.status(500).send('<p style="color:red;font-family:monospace;padding:40px">Error generating study guide: ' + err.message + '</p>');
+  }
 });
 
 // ── Catch-all → index ─────────────────────────────────────────────────────────

@@ -165,14 +165,12 @@ router.get('/export.csv', requireAuth, async (req, res) => {
   }
 });
 
-// ── GET /api/admin/study-guide/:id ───────────────────────────────────────────
-// Returns a self-contained HTML study guide for the given session.
-router.get('/study-guide/:id', requireAuth, async (req, res) => {
+// ── GET /api/admin/study-guide ───────────────────────────────────────────────
+// Aggregate guide built from ALL completed sessions.
+router.get('/study-guide', requireAuth, async (req, res) => {
   try {
-    const detail = await db.getSessionDetail(req.params.id);
-    if (!detail) return res.status(404).send('<p>Session not found</p>');
-
-    const html = generateStudyGuide(detail, detail);
+    const { logs, sessions } = await db.getAllLogsAggregated();
+    const html = generateStudyGuide({ logs, sessions });
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
     res.send(html);

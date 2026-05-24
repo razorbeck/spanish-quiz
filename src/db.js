@@ -132,6 +132,27 @@ async function gradeOpenResponse(id, score, notes) {
   );
 }
 
+async function getAllLogsAggregated() {
+  const p = getPool();
+  const [logsRes, sessRes] = await Promise.all([
+    p.query(`
+      SELECT ql.section, ql.question, ql.correct_ans, ql.chosen,
+             ql.is_correct, ql.explanation
+      FROM question_log ql
+      JOIN sessions s ON ql.session_id = s.id
+      WHERE s.completed_at IS NOT NULL
+      ORDER BY ql.section, ql.question
+    `),
+    p.query(`
+      SELECT id, mc_score, mc_total, cat_json, completed_at
+      FROM sessions
+      WHERE completed_at IS NOT NULL
+      ORDER BY completed_at DESC
+    `),
+  ]);
+  return { logs: logsRes.rows, sessions: sessRes.rows };
+}
+
 async function resetAllOpenScores() {
   const r = await getPool().query(
     `UPDATE sessions SET open_score = NULL, admin_notes = NULL, reviewed = 0
@@ -190,5 +211,5 @@ async function getStats() {
 module.exports = {
   initDb, createSession, getSession, completeSession, logAnswer,
   getAllSessions, getSessionDetail, gradeOpenResponse, resetAllOpenScores,
-  deleteSession, getStats,
+  getAllLogsAggregated, deleteSession, getStats,
 };

@@ -12,529 +12,793 @@ function shuffle(arr) {
   return a;
 }
 function sample(arr, n) { return shuffle(arr).slice(0, n); }
-
 function esc(s) {
   return String(s || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
-
-/** Shuffle a question's options and note the new correct index */
 function prepQ(q) {
-  const idxs = shuffle([0, 1, 2, 3]);
-  return {
-    q:    q.question,
-    opts: idxs.map(i => q.options[i]),
-    ans:  idxs.indexOf(q.correct),
-    expl: q.explanation || '',
-  };
+  const idxs = shuffle([0,1,2,3]);
+  return { q: q.question, opts: idxs.map(i => q.options[i]), ans: idxs.indexOf(q.correct), expl: q.explanation || '' };
 }
 
-/* ── Category metadata ───────────────────────────────────────────────────── */
-// Keys must match the exact section strings used in questions.js
-const CAT_META = {
-  'Fiesta Fatal — Characters & Events': {
-    emoji: '🎭', color: '#e94560', xp: 150, shortName: 'Fiesta Fatal',
-    tips: [
-      'Focus on WHO the characters are and the role each one plays in the story.',
-      'Remember the sequence of events — what caused each one to happen.',
-      'Pay attention to characters’ emotional reactions and motivations.',
-      'Key question words: ¿Quién? (Who?) · ¿Qué pasó? (What happened?) · ¿Por qué? (Why?)',
-    ],
-  },
-  'Preterite Conjugation': {
-    emoji: '⚔️', color: '#ffd32a', xp: 200, shortName: 'Preterite',
-    tips: [
-      'Use PRETERITE for completed actions at a specific moment in the past.',
-      '-AR endings: -é · -aste · -ó · -amos · -asteis · -aron',
-      '-ER/-IR endings: -í · -iste · -ió · -imos · -isteis · -ieron',
-      'Irregulars (memorize!): ser/ir → fui, fuiste, fue, fuimos, fueron',
-      'Irregulars: tener → tuve · estar → estuve · hacer → hice/hizo · venir → vine',
-      'Spelling change (yo only): -car → qué · -gar → gué · -zar → cé',
-      'Stem-changers (3rd person only): e→i (pidió, pidieron) · o→u (durmió, durmieron)',
-    ],
-  },
-  'Imperfect Conjugation': {
-    emoji: '🌀', color: '#4fc3f7', xp: 200, shortName: 'Imperfect',
-    tips: [
-      'Use IMPERFECT for ongoing/repeated past actions and descriptions.',
-      '-AR endings: -aba · -abas · -aba · -ábamos · -abais · -aban',
-      '-ER/-IR endings: -ía · -ías · -ía · -íamos · -íais · -ían',
-      'ONLY 3 irregular verbs: ser (era) · ir (iba) · ver (veía)',
-      'Trigger words: siempre · todos los días · de niño/a · mientras · generalmente · cada día',
-    ],
-  },
-  'Vocabulary': {
-    emoji: '📚', color: '#00c896', xp: 100, shortName: 'Vocabulary',
-    tips: [
-      'Group words by theme — related words are easier to remember together.',
-      'Look for Spanish-English cognates (similar spellings = similar meaning).',
-      'Practice using each word in a full sentence to build context.',
-      'Flashcard tip: cover the Spanish side, read the English, then recall it.',
-    ],
-  },
-};
+/* ── Analyse performance across ALL completed sessions ───────────────────── */
+function analyzePerformance(logs, sessions) {
+  // Per-question accuracy (aggregate all attempts)
+  const qMap = {};
+  logs.forEach(row => {
+    const key = row.question;
+    if (!qMap[key]) {
+      qMap[key] = { question: key, section: row.section, correct: 0, total: 0,
+                    correct_ans: row.correct_ans, explanation: row.explanation };
+    }
+    qMap[key].total++;
+    if (row.is_correct) qMap[key].correct++;
+  });
 
-const QUESTION_POOLS = {
-  'Fiesta Fatal — Characters & Events': FIESTA_FATAL,
-  'Preterite Conjugation': PRETERITE,
-  'Imperfect Conjugation': IMPERFECT,
-  'Vocabulary': VOCABULARY,
-};
+  // Per-section accuracy
+  const sMap = {};
+  logs.forEach(row => {
+    const s = row.section || 'Unknown';
+    if (!sMap[s]) sMap[s] = { correct: 0, total: 0 };
+    sMap[s].total++;
+    if (row.is_correct) sMap[s].correct++;
+  });
+
+  const catScores = Object.entries(sMap).map(([name, v]) => ({
+    name, correct: v.correct, total: v.total,
+    pct: v.total > 0 ? Math.round(v.correct / v.total * 100) : 0,
+  })).sort((a, b) => a.pct - b.pct);
+
+  // Questions answered wrong more than half the time
+  const weakQuestions = Object.values(qMap)
+    .filter(q => q.total > 0 && (q.correct / q.total) < 0.6)
+    .sort((a, b) => (a.correct / a.total) - (b.correct / b.total))
+    .slice(0, 20);
+
+  const weakSections = new Set(catScores.filter(c => c.pct < 75).map(c => c.name));
+
+  // Overall
+  const totalAttempts = sessions.length;
+  const latestScore = sessions.length > 0 && sessions[0].mc_total > 0
+    ? Math.round(sessions[0].mc_score / sessions[0].mc_total * 100) : 0;
+  const bestScore = sessions.length > 0
+    ? Math.max(...sessions.map(s => s.mc_total > 0 ? Math.round(s.mc_score / s.mc_total * 100) : 0)) : 0;
+  const avgScore = sessions.length > 0
+    ? Math.round(sessions.reduce((sum, s) => sum + (s.mc_total > 0 ? s.mc_score / s.mc_total * 100 : 0), 0) / sessions.length) : 0;
+
+  return { catScores, weakSections, weakQuestions, totalAttempts, latestScore, bestScore, avgScore };
+}
+
+/* ── Static study content (character intel, grammar rules) ───────────────── */
+const CHARACTERS = [
+  { name: 'Jorge',        role: 'Ex-cop / Julieta\'s dad',
+    facts: ['Worked for the police — then had to flee the cartel','Lived in Mexico City (México D.F.)','Lives in a small apartment','Has SECRET STAIRS hidden under his sofa','Keeps his money in CASH (not in a bank)','Runs from the cartel with Julieta to protect her'] },
+  { name: 'Julieta',      role: 'Jorge\'s daughter',
+    facts: ['Celebrating her QUINCEAÑERA (15th birthday party) with family','Adores her dad Jorge','Is at the center of the "Fiesta Fatal"'] },
+  { name: 'Riky',         role: 'Julieta\'s boyfriend?',
+    facts: ['Very handsome and popular with girls','NOT HONEST about his true identity','Has dangerous secrets he hides from everyone'] },
+  { name: 'Edgar',        role: 'Cartel member',
+    facts: ['VIOLENT and DANGEROUS — a serious threat','Works for the cartel','The main antagonist of the story'] },
+  { name: 'Susana',       role: 'Works at a restaurant',
+    facts: ['Works at a RESTAURANT in Ciudad Juárez (not a market stall)','Connected to the story through the cartel situation'] },
+  { name: 'Vanesa',       role: 'Market worker',
+    facts: ['Works at a market STALL (puesto) with her MOTHER','Wears HUMBLE (humilde) clothing','Is hardworking and simple — not rich'] },
+  { name: 'Mónica',       role: 'Friend',
+    facts: ['Described as COMPRENSIVA (understanding / compassionate)','Is kind and empathetic toward others'] },
+  { name: 'Sr. Sandoval', role: 'Father / market worker',
+    facts: ['Works at the market WITH his daughter','Does NOT respect his daughter','Contrasts with Jorge who is a loving, protective father'] },
+  { name: 'El taxista',   role: 'The taxi driver',
+    facts: ['Has a FAST car','DIDN\'T LOOK at the road → CRASHED into another car','His crash is a key event in the story'] },
+  { name: 'Berta',        role: 'Character in the story',
+    facts: ['Appears in the Fiesta Fatal story','Know her name and association with the other characters'] },
+  { name: 'El cártel',    role: 'The criminal organization',
+    facts: ['Wanted to ELIMINATE Jorge AND his entire family','The source of all danger in the story','Why Jorge had to flee and hide'] },
+];
+
+const KEY_EVENTS = [
+  'The cartel wants to ELIMINATE Jorge and his entire family.',
+  'Jorge was running from the cartel WITH his daughter Julieta.',
+  'Jorge has SECRET STAIRS hidden beneath his sofa in his small apartment.',
+  'Jorge keeps his money in CASH — he doesn\'t trust banks.',
+  'The taxi driver crashed because he wasn\'t paying attention to the road.',
+  'Julieta\'s quinceañera (15th birthday party) is where the story begins.',
+  'Riky is NOT honest about who he really is — he has dangerous secrets.',
+  'Vanesa works a humble market stall with her mom — she is NOT rich.',
+  'Sr. Sandoval does not respect his daughter, unlike Jorge who protects Julieta.',
+];
+
+const VOCAB_LIST = [
+  { es: 'peligroso/a',   en: 'dangerous',           ex: 'Edgar era violento y <b>peligroso</b>.' },
+  { es: 'huir',          en: 'to flee / run away',   ex: 'Jorge tenía que <b>huir</b> del cártel.' },
+  { es: 'comprensiva',   en: 'understanding',        ex: 'Mónica era muy <b>comprensiva</b>.' },
+  { es: 'las escaleras', en: 'stairs',               ex: 'Había <b>escaleras</b> secretas debajo del sofá.' },
+  { es: 'simpático/a',   en: 'nice / friendly',      ex: 'Julieta era muy <b>simpática</b>.' },
+  { es: 'humilde',       en: 'humble / modest',      ex: 'Vanesa llevaba ropa <b>humilde</b>.' },
+  { es: 'chocó',         en: 'crashed / collided',   ex: 'El taxista <b>chocó</b> con otro coche.' },
+  { es: 'el puesto',     en: 'market stall',         ex: 'Vanesa trabajaba en un <b>puesto</b>.' },
+  { es: 'eliminar',      en: 'to eliminate',         ex: 'El cártel quería <b>eliminar</b> a Jorge.' },
+  { es: 'la quinceañera',en: 'girl\'s 15th birthday party', ex: 'Julieta celebraba su <b>quinceañera</b>.' },
+  { es: 'el cártel',     en: 'cartel (criminal org)',ex: 'El <b>cártel</b> era muy peligroso.' },
+  { es: 'adorar',        en: 'to adore / love deeply', ex: 'Julieta <b>adoraba</b> a su papá.' },
+  { es: 'respetar',      en: 'to respect',           ex: 'Sr. Sandoval no <b>respetaba</b> a su hija.' },
+  { es: 'escapar',       en: 'to escape',            ex: 'Jorge y Julieta lograron <b>escapar</b>.' },
+  { es: 'gracioso/a',    en: 'funny / entertaining', ex: 'Era muy <b>gracioso</b> de niño.' },
+  { es: 'nervioso/a',    en: 'nervous',              ex: 'La señora estaba <b>nerviosa</b>.' },
+  { es: 'honesto/a',     en: 'honest',               ex: 'Riky no era <b>honesto</b> sobre su identidad.' },
+  { es: 'el mercado',    en: 'the market',           ex: 'Vanesa trabajaba en el <b>mercado</b>.' },
+  { es: 'el efectivo',   en: 'cash',                 ex: 'Jorge guardaba su dinero en <b>efectivo</b>.' },
+  { es: 'secreto/a',     en: 'secret / hidden',      ex: 'Tenía <b>escaleras secretas</b> debajo del sofá.' },
+];
 
 /* ── Main export ─────────────────────────────────────────────────────────── */
-function generateStudyGuide(session, detail) {
-  const studentName = session.student_name || 'Student';
-  const overallPct  = session.mc_total > 0
-    ? Math.round((session.mc_score / session.mc_total) * 100)
-    : 0;
+function generateStudyGuide({ logs, sessions }) {
+  if (!sessions.length) {
+    return '<html><body style="background:#080810;color:#fff;font-family:system-ui;padding:60px;text-align:center">'
+      + '<h1 style="color:#4f9eff">No completed tests yet.</h1>'
+      + '<p>Dylan needs to finish at least one practice test before a study guide can be generated.</p></body></html>';
+  }
 
-  // Parse per-category scores
-  let cats = {};
-  try { cats = JSON.parse(session.cat_json || '{}'); } catch (_) {}
+  const perf = analyzePerformance(logs, sessions);
 
-  const allCats = Object.entries(cats)
-    .map(([name, v]) => ({
-      name,
-      correct: v.c,
-      total:   v.t,
-      pct:     v.t > 0 ? Math.round((v.c / v.t) * 100) : 0,
-    }))
-    .sort((a, b) => a.pct - b.pct);
+  // Determine which sections to show (weak first, but always show all if nothing is weak)
+  const sectionOrder = ['Fiesta Fatal — Characters & Events','Preterite Conjugation','Imperfect Conjugation','Vocabulary'];
+  const showAll = perf.weakSections.size === 0;
 
-  const weakCats   = allCats.filter(c => c.pct < 75);
-  const targetCats = weakCats.length ? weakCats : allCats.slice(0, 2);
+  // Sample practice questions avoiding ones the student repeatedly gets wrong (to keep fresh)
+  const practicePools = {
+    'Fiesta Fatal — Characters & Events': sample(FIESTA_FATAL, 6).map(prepQ),
+    'Preterite Conjugation':              sample(PRETERITE,    6).map(prepQ),
+    'Imperfect Conjugation':              sample(IMPERFECT,    6).map(prepQ),
+    'Vocabulary':                         sample(VOCABULARY,   6).map(prepQ),
+  };
 
-  // Group wrong answers from the question log by section
-  const wrongBySection = {};
-  (detail.log || []).forEach(row => {
-    if (!row.is_correct && row.section) {
-      (wrongBySection[row.section] = wrongBySection[row.section] || []).push(row);
-    }
-  });
-
-  // Build one level object per target category
-  const levels = targetCats.map(cat => {
-    const meta       = CAT_META[cat.name] || { emoji: '📝', color: '#7c4dff', xp: 100, shortName: cat.name, tips: [] };
-    const pool       = QUESTION_POOLS[cat.name] || [];
-    const wrong      = (wrongBySection[cat.name] || []).slice(0, 5);
-    const wrongTexts = new Set(wrong.map(w => w.question));
-    const fresh      = sample(pool.filter(q => !wrongTexts.has(q.question)), 5).map(prepQ);
-    return { cat, meta, wrong, fresh };
-  });
-
-  const totalXP = levels.reduce((s, l) => s + l.meta.xp, 0);
-  const isReady = overallPct >= 70 && weakCats.length <= 1;
-
-  return renderPage({ studentName, overallPct, allCats, levels, isReady, totalXP });
+  return buildHTML(perf, practicePools, showAll, sectionOrder);
 }
 
-/* ── HTML page renderer ─────────────────────────────────────────────────── */
-function renderPage({ studentName, overallPct, allCats, levels, isReady, totalXP }) {
-  const scoreColor = overallPct >= 80 ? '#00c896' : overallPct >= 65 ? '#ffd32a' : '#ff4757';
-  const weakCount  = allCats.filter(c => c.pct < 75).length;
+/* ── HTML builder ────────────────────────────────────────────────────────── */
+function buildHTML(perf, practicePools, showAll, sectionOrder) {
 
   /* ── CSS ── */
   const CSS = `
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg:#0d0d1a; --surface:#1a1a2e; --card:#16213e; --border:#2d2d5e;
-      --text:#eaeaea; --muted:#778; --radius:10px;
+      --bg:      #080810;
+      --surface: #0e0e1c;
+      --card:    #12122a;
+      --border:  #1c1c38;
+      --border2: #2a2a50;
+      --text:    #dde0f0;
+      --muted:   #5a5a80;
+      --blue:    #4f9eff;
+      --red:     #ff3a5c;
+      --green:   #00d97e;
+      --yellow:  #ffc42e;
+      --purple:  #8b5cf6;
+      --cyan:    #22d3ee;
+      --radius:  10px;
     }
-    body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; min-height:100vh; padding-bottom:40px; }
+    html { scroll-behavior: smooth; }
+    body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; min-height: 100vh; }
 
-    /* XP Bar */
-    #xp-bar { position:sticky; top:0; z-index:100; background:#0d0d1a; border-bottom:2px solid #2d2d5e; padding:9px 20px; display:flex; align-items:center; gap:12px; }
-    #xp-label { font-size:0.78rem; color:#aab; white-space:nowrap; font-weight:700; letter-spacing:0.5px; }
-    #xp-track { flex:1; height:10px; background:var(--border); border-radius:99px; overflow:hidden; }
-    #xp-fill  { height:100%; width:0%; background:linear-gradient(90deg,#7c4dff,#e94560); border-radius:99px; transition:width 0.7s cubic-bezier(.22,.61,.36,1); }
-    #xp-val   { font-size:0.88rem; font-weight:900; color:#c4b5fd; white-space:nowrap; min-width:90px; text-align:right; }
+    /* ── Top Nav ── */
+    #top-nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(8,8,16,0.95); backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border2);
+      display: flex; align-items: center; gap: 0; overflow-x: auto;
+      padding: 0 8px;
+    }
+    #top-nav a {
+      padding: 14px 18px; font-size: 0.78rem; font-weight: 700;
+      letter-spacing: 0.8px; text-transform: uppercase; text-decoration: none;
+      color: var(--muted); white-space: nowrap;
+      border-bottom: 2px solid transparent; transition: all 0.15s;
+    }
+    #top-nav a:hover, #top-nav a.active { color: var(--blue); border-bottom-color: var(--blue); }
+    #top-nav a.active { color: var(--blue); }
 
-    /* Hero Card */
-    .hero-card  { max-width:860px; margin:28px auto 0; padding:0 16px; }
-    .hero-inner { background:linear-gradient(135deg,#1a1a2e,#16213e); border:1px solid #e9456033; border-radius:16px; padding:28px 32px; display:flex; align-items:center; gap:24px; flex-wrap:wrap; }
-    .hero-icon  { font-size:3.2rem; }
-    .hero-text h1 { font-size:1.5rem; letter-spacing:-0.5px; }
-    .hero-text h1 span { color:#e94560; }
-    .hero-text .sub { color:var(--muted); font-size:0.83rem; margin-top:4px; }
-    .hero-stats { margin-left:auto; text-align:right; }
-    .hero-score-val { font-size:2.4rem; font-weight:900; }
-    .hero-score-lbl { font-size:0.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
-    .hero-status    { font-size:0.82rem; margin-top:6px; }
+    /* ── Page sections ── */
+    .page-section { max-width: 920px; margin: 0 auto; padding: 40px 20px 60px; }
+    .section-divider { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
 
-    /* Sections */
-    .section-wrap { max-width:860px; margin:24px auto 0; padding:0 16px; }
-    .section-lbl  { font-size:0.7rem; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); margin-bottom:10px; }
+    /* ── Header ── */
+    .guide-header { padding: 36px 20px 0; max-width: 920px; margin: 0 auto; }
+    .guide-header h1 { font-size: 2rem; font-weight: 900; letter-spacing: -1px; }
+    .guide-header h1 span { color: var(--blue); }
+    .guide-header .sub { color: var(--muted); font-size: 0.9rem; margin-top: 6px; }
 
-    /* Overview bars */
-    .overview-row { display:flex; align-items:center; gap:10px; margin-bottom:9px; font-size:0.83rem; }
-    .ov-name      { width:130px; flex-shrink:0; }
-    .ov-bar-wrap  { flex:1; height:7px; background:var(--border); border-radius:99px; overflow:hidden; }
-    .ov-bar       { height:100%; border-radius:99px; }
-    .ov-pct       { width:90px; text-align:right; font-size:0.76rem; }
+    /* ── Stats row ── */
+    .stats-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 24px; }
+    .stat-chip {
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: 8px; padding: 14px 20px; text-align: center; min-width: 100px;
+    }
+    .stat-chip .val { font-size: 1.8rem; font-weight: 900; }
+    .stat-chip .lbl { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
 
-    /* Level Cards */
-    .level-card  { max-width:860px; margin:20px auto 0; padding:0 16px; }
-    .level-inner { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; }
-    .level-header { display:flex; align-items:center; gap:12px; padding:14px 18px; cursor:pointer; user-select:none; }
-    .level-header:hover { background:rgba(255,255,255,0.03); }
-    .level-badge { padding:4px 12px; border-radius:99px; font-size:0.73rem; font-weight:800; letter-spacing:0.5px; flex-shrink:0; }
-    .level-title  { font-weight:700; font-size:0.97rem; flex:1; }
-    .level-score  { font-size:0.8rem; font-weight:700; flex-shrink:0; }
-    .level-xp     { font-size:0.76rem; font-weight:700; flex-shrink:0; }
-    .level-check  { font-size:1.15rem; flex-shrink:0; }
-    .level-body   { padding:0 18px 20px; border-top:1px solid var(--border); display:none; }
-    .level-body.open { display:block; }
+    /* ── Score bars ── */
+    .score-bars { margin-top: 24px; }
+    .bar-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 0.84rem; }
+    .bar-name { width: 160px; flex-shrink: 0; }
+    .bar-track { flex: 1; height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 99px; transition: width 1s ease; }
+    .bar-pct   { width: 50px; text-align: right; font-size: 0.78rem; font-weight: 700; }
 
-    /* Tips */
-    .tips-box   { background:rgba(255,255,255,0.04); border-radius:var(--radius); padding:14px 18px; margin:14px 0; }
-    .tips-title { font-size:0.7rem; text-transform:uppercase; letter-spacing:1px; color:#aab; margin-bottom:8px; }
-    .tip-item   { font-size:0.83rem; color:var(--text); line-height:1.75; }
+    /* ── Weak spots list ── */
+    .weak-list { list-style: none; margin-top: 16px; }
+    .weak-list li {
+      background: var(--card); border: 1px solid var(--border2);
+      border-left: 3px solid var(--red);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      padding: 10px 16px; margin-bottom: 8px;
+      font-size: 0.84rem; line-height: 1.5;
+    }
+    .weak-list li .wl-pct { color: var(--red); font-weight: 700; float: right; }
+    .weak-list li .wl-ans { color: var(--green); font-size: 0.76rem; margin-top: 3px; display: block; }
 
-    /* Sub-section label */
-    .sub-lbl { font-size:0.7rem; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); margin:18px 0 10px; }
+    /* ── Section headings ── */
+    .sec-title {
+      font-size: 1.3rem; font-weight: 900; letter-spacing: -0.5px;
+      margin-bottom: 6px; display: flex; align-items: center; gap: 10px;
+    }
+    .sec-label {
+      font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1.5px;
+      color: var(--muted); margin-bottom: 20px;
+    }
+    .tag {
+      display: inline-block; padding: 3px 10px; border-radius: 99px;
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .tag-red    { background: rgba(255,58,92,0.15); color: var(--red); border: 1px solid rgba(255,58,92,0.3); }
+    .tag-blue   { background: rgba(79,158,255,0.12); color: var(--blue); border: 1px solid rgba(79,158,255,0.3); }
+    .tag-green  { background: rgba(0,217,126,0.12); color: var(--green); border: 1px solid rgba(0,217,126,0.3); }
+    .tag-yellow { background: rgba(255,196,46,0.12); color: var(--yellow); border: 1px solid rgba(255,196,46,0.3); }
 
-    /* Flashcards */
-    .fc-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; }
-    .flashcard  { background:var(--card); border:1.5px solid var(--border); border-radius:var(--radius); padding:14px; cursor:pointer; min-height:90px; transition:transform 0.12s; }
-    .flashcard:hover { transform:translateY(-2px); border-color:#7c4dff55; }
-    .flashcard .fc-back { display:none; }
-    .flashcard.flipped  .fc-front { display:none; }
-    .flashcard.flipped  .fc-back  { display:block; }
-    .flashcard.flipped  { border-color:#00c89644; }
-    .fc-q       { font-size:0.86rem; line-height:1.5; margin-bottom:6px; }
-    .fc-hint    { font-size:0.7rem; color:var(--muted); font-style:italic; }
-    .fc-correct { font-size:0.88rem; font-weight:700; color:#00c896; margin-bottom:6px; }
-    .fc-expl    { font-size:0.76rem; color:var(--muted); line-height:1.5; }
+    /* ── Character Cards ── */
+    .char-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-top: 16px; }
+    .char-card {
+      background: var(--card); border: 1px solid var(--border2);
+      border-radius: 12px; overflow: hidden;
+      transition: transform 0.15s, border-color 0.15s;
+    }
+    .char-card:hover { transform: translateY(-2px); border-color: var(--blue); }
+    .char-header { padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+    .char-name { font-size: 1.05rem; font-weight: 800; }
+    .char-role { font-size: 0.76rem; color: var(--muted); margin-top: 2px; }
+    .char-body  { padding: 12px 16px; }
+    .char-facts { list-style: none; }
+    .char-facts li { font-size: 0.82rem; line-height: 1.6; padding: 3px 0; }
+    .char-facts li::before { content: "›  "; color: var(--blue); font-weight: 700; }
 
-    /* MC Practice */
-    .mc-item   { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; }
-    .mc-q      { font-size:0.88rem; font-weight:600; margin-bottom:10px; line-height:1.5; }
-    .mc-opts   { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
-    .mc-opt    { padding:9px 13px; background:rgba(255,255,255,0.05); border:1.5px solid var(--border); border-radius:8px; color:var(--text); font-size:0.81rem; cursor:pointer; text-align:left; transition:all 0.12s; }
-    .mc-opt:hover:not(:disabled) { border-color:#7c4dff; background:rgba(124,77,255,0.1); }
-    .mc-opt.correct  { background:rgba(0,200,150,0.15); border-color:#00c896; color:#00c896; font-weight:700; }
-    .mc-opt.wrong    { background:rgba(255,71,87,0.12); border-color:#ff4757; color:#ff4757; }
-    .mc-opt:disabled { cursor:default; }
-    .mc-feedback     { font-size:0.78rem; margin-top:7px; min-height:16px; line-height:1.5; }
+    /* ── Events timeline ── */
+    .event-list { list-style: none; margin-top: 14px; }
+    .event-list li {
+      padding: 10px 16px 10px 20px; border-left: 2px solid var(--blue);
+      margin-bottom: 8px; font-size: 0.86rem; line-height: 1.5;
+      position: relative;
+    }
+    .event-list li::before {
+      content: ''; position: absolute; left: -5px; top: 14px;
+      width: 8px; height: 8px; border-radius: 50%; background: var(--blue);
+    }
 
-    /* Level Complete Button */
-    .complete-btn { width:100%; padding:12px; border:none; border-radius:var(--radius); font-size:0.9rem; font-weight:800; cursor:pointer; margin-top:14px; letter-spacing:0.3px; transition:opacity 0.15s, transform 0.1s; display:none; }
-    .complete-btn:hover  { opacity:0.85; }
-    .complete-btn:active { transform:scale(0.98); }
-    .complete-btn:disabled { opacity:0.5; cursor:default; }
+    /* ── Grammar tables ── */
+    .gram-tables { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 16px; }
+    .gram-table-wrap { background: var(--card); border: 1px solid var(--border2); border-radius: var(--radius); overflow: hidden; }
+    .gram-table-title { padding: 10px 16px; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); border-bottom: 1px solid var(--border); font-weight: 700; }
+    .gram-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .gram-table th { padding: 8px 14px; text-align: left; color: var(--muted); font-size: 0.72rem; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    .gram-table td { padding: 8px 14px; border-bottom: 1px solid var(--border); }
+    .gram-table tr:last-child td { border-bottom: none; }
+    .gram-table .subj { color: var(--muted); font-size: 0.8rem; }
+    .gram-table .conj { font-weight: 700; }
+    .gram-table .ending { color: var(--blue); }
+    .gram-table .irr { color: var(--red); }
+    .gram-table .key { color: var(--yellow); }
 
-    /* Boss Battle */
-    .boss-card  { max-width:860px; margin:32px auto 0; padding:0 16px; }
-    .boss-inner { border-radius:16px; padding:36px; text-align:center; position:relative; overflow:hidden; }
-    .boss-inner.locked   { background:var(--surface); border:2px dashed var(--border); }
-    .boss-inner.unlocked { background:linear-gradient(135deg,#1a0a2e,#2e0a1a); border:2px solid #e94560; animation:bossPulse 3s ease-in-out infinite; }
-    @keyframes bossPulse { 0%,100% { box-shadow:0 0 20px #e9456033; } 50% { box-shadow:0 0 50px #e9456077; } }
-    .boss-lock  { font-size:2.5rem; margin-bottom:10px; }
-    .boss-icon  { font-size:3.5rem; margin-bottom:10px; display:none; }
-    .boss-title { font-size:1.5rem; font-weight:900; letter-spacing:1px; margin-bottom:8px; }
-    .boss-sub   { color:var(--muted); font-size:0.86rem; margin-bottom:18px; }
-    .boss-xp    { font-size:0.95rem; margin-bottom:20px; color:#c4b5fd; }
-    .boss-btn   { display:inline-block; padding:14px 44px; background:#e94560; color:#fff; border:none; border-radius:var(--radius); font-size:1rem; font-weight:800; cursor:pointer; text-decoration:none; letter-spacing:0.5px; transition:transform 0.15s, opacity 0.15s; }
-    .boss-btn:hover:not(.disabled) { opacity:0.85; transform:scale(1.04); }
-    .boss-btn.disabled { background:#333; color:#666; cursor:not-allowed; pointer-events:none; }
+    /* ── Rule boxes ── */
+    .rule-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-top: 16px; }
+    .rule-box { background: var(--card); border: 1px solid var(--border2); border-radius: var(--radius); padding: 16px 18px; }
+    .rule-box .rule-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 10px; font-weight: 700; }
+    .rule-box .rule-note { font-size: 0.82rem; line-height: 1.7; }
+    .rule-box .rule-note b { color: var(--yellow); }
+    .rule-box .rule-note code { background: rgba(79,158,255,0.12); color: var(--blue); padding: 1px 6px; border-radius: 4px; font-family: monospace; }
+    .rule-box.highlight { border-color: var(--yellow); }
+    .rule-box.highlight .rule-title { color: var(--yellow); }
 
-    /* XP float pop */
-    .xp-pop { position:fixed; pointer-events:none; font-size:1rem; font-weight:900; color:#c4b5fd; z-index:9999; animation:xpFloat 1.3s ease-out forwards; white-space:nowrap; }
-    @keyframes xpFloat { 0% { opacity:1; transform:translateY(0) scale(1); } 100% { opacity:0; transform:translateY(-70px) scale(1.3); } }
+    /* ── Fill-in practice ── */
+    .fillin-wrap { margin-top: 20px; }
+    .fillin-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 12px; font-weight: 700; }
+    .fillin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+    .fillin-item { background: var(--card); border: 1px solid var(--border2); border-radius: 8px; padding: 12px 16px; }
+    .fillin-prompt { font-size: 0.78rem; color: var(--muted); margin-bottom: 8px; }
+    .fillin-prompt b { color: var(--text); }
+    .fillin-input-wrap { display: flex; align-items: center; gap: 8px; }
+    .fillin-input {
+      flex: 1; background: var(--surface); border: 1.5px solid var(--border2);
+      border-radius: 6px; padding: 7px 12px; color: var(--text);
+      font-size: 0.9rem; outline: none; transition: border-color 0.15s;
+    }
+    .fillin-input:focus { border-color: var(--blue); }
+    .fillin-input.correct { border-color: var(--green); color: var(--green); }
+    .fillin-input.wrong   { border-color: var(--red); }
+    .fillin-check { padding: 7px 12px; background: var(--border2); border: none; border-radius: 6px; color: var(--text); font-size: 0.8rem; cursor: pointer; }
+    .fillin-check:hover { background: var(--blue); color: #fff; }
+    .fillin-feedback { font-size: 0.75rem; margin-top: 4px; min-height: 16px; }
 
-    /* Briefing */
-    .briefing { background:rgba(124,77,255,0.1); border:1px solid rgba(124,77,255,0.3); border-radius:var(--radius); padding:14px 18px; font-size:0.86rem; line-height:1.75; color:#c4b5fd; }
+    /* ── Vocab grid ── */
+    .vocab-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-top: 16px; }
+    .vocab-card { background: var(--card); border: 1.5px solid var(--border2); border-radius: var(--radius); overflow: hidden; cursor: pointer; transition: border-color 0.12s; }
+    .vocab-card:hover { border-color: var(--blue); }
+    .vocab-card.known { border-color: var(--green); opacity: 0.6; }
+    .vocab-card.review-again { border-color: var(--red); }
+    .vocab-front { padding: 14px 16px; }
+    .vocab-es { font-size: 1rem; font-weight: 800; }
+    .vocab-flip-hint { font-size: 0.7rem; color: var(--muted); margin-top: 4px; }
+    .vocab-back { padding: 12px 16px; border-top: 1px solid var(--border); display: none; }
+    .vocab-en { font-size: 0.9rem; font-weight: 700; color: var(--cyan); margin-bottom: 6px; }
+    .vocab-ex { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+    .vocab-card.flipped .vocab-back { display: block; }
+    .vocab-card.flipped .vocab-flip-hint { display: none; }
+    .vocab-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .vocab-btn { flex: 1; padding: 6px; border: none; border-radius: 6px; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+    .vocab-btn-know   { background: rgba(0,217,126,0.15); color: var(--green); }
+    .vocab-btn-review { background: rgba(255,58,92,0.15); color: var(--red); }
+    .vocab-progress { font-size: 0.8rem; color: var(--muted); margin-bottom: 12px; }
+    .vocab-progress b { color: var(--green); }
 
-    @media (max-width:600px) {
-      .mc-opts { grid-template-columns:1fr; }
-      .hero-stats { margin-left:0; text-align:left; }
-      .fc-grid { grid-template-columns:1fr; }
+    /* ── MC Practice ── */
+    .practice-section { margin-top: 28px; }
+    .practice-title { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 14px; font-weight: 700; }
+    .mc-item { background: var(--card); border: 1px solid var(--border2); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
+    .mc-q { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; line-height: 1.5; }
+    .mc-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .mc-opt { padding: 9px 14px; background: rgba(255,255,255,0.04); border: 1.5px solid var(--border2); border-radius: 8px; color: var(--text); font-size: 0.82rem; cursor: pointer; text-align: left; transition: all 0.12s; }
+    .mc-opt:hover:not(:disabled) { border-color: var(--blue); background: rgba(79,158,255,0.08); }
+    .mc-opt.correct { background: rgba(0,217,126,0.12); border-color: var(--green); color: var(--green); font-weight: 700; }
+    .mc-opt.wrong   { background: rgba(255,58,92,0.1); border-color: var(--red); color: var(--red); }
+    .mc-opt:disabled { cursor: default; }
+    .mc-feedback { font-size: 0.78rem; margin-top: 6px; min-height: 16px; line-height: 1.5; }
+
+    /* ── Imperfect vs Preterite comparison ── */
+    .vs-table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 0.85rem; }
+    .vs-table th { padding: 10px 16px; background: var(--surface); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; }
+    .vs-table th:first-child { color: var(--blue); }
+    .vs-table th:last-child  { color: var(--yellow); }
+    .vs-table td { padding: 9px 16px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .vs-table tr:last-child td { border-bottom: none; }
+    .vs-label { font-weight: 700; margin-bottom: 4px; }
+    .vs-ex    { color: var(--muted); font-style: italic; font-size: 0.8rem; }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .mc-opts { grid-template-columns: 1fr; }
+      .gram-tables { grid-template-columns: 1fr; }
+      .rule-grid { grid-template-columns: 1fr; }
+      .char-grid { grid-template-columns: 1fr; }
+      .fillin-grid { grid-template-columns: 1fr; }
+      .stats-row { gap: 8px; }
+      .stat-chip { min-width: 80px; padding: 10px 14px; }
+      .stat-chip .val { font-size: 1.4rem; }
     }
   `;
 
-  /* ── Level HTML blocks ── */
-  const levelsHtml = levels.map((level, li) => {
-    const { cat, meta, wrong, fresh } = level;
-    const pctColor = cat.pct < 50 ? '#ff4757' : cat.pct < 75 ? '#ffd32a' : '#00c896';
-    const btnTextColor = meta.color === '#ffd32a' ? '#000' : '#fff';
-
-    // Flashcard rows (missed questions)
-    const flashHtml = wrong.length
-      ? '<div class="sub-lbl">&#x1F0CF; Review Flashcards &mdash; Questions You Missed</div>'
-        + '<div class="fc-grid">'
-        + wrong.map(row =>
-          '<div class="flashcard" onclick="flipCard(this)">'
-          + '<div class="fc-front">'
-          + '<div class="fc-q">' + esc(row.question) + '</div>'
-          + '<div class="fc-hint">&#x1F446; tap to reveal answer</div>'
-          + '</div>'
-          + '<div class="fc-back">'
-          + '<div class="fc-correct">&#x2705; ' + esc(row.correct_ans) + '</div>'
-          + (row.explanation ? '<div class="fc-expl">' + esc(row.explanation) + '</div>' : '')
-          + '</div>'
-          + '</div>'
-        ).join('')
-        + '</div>'
-      : '';
-
-    // MC practice (fresh questions)
-    const mcHtml = fresh.length
-      ? '<div class="sub-lbl">&#x26A1; Practice Challenges</div>'
-        + fresh.map((fq, qi) =>
-          '<div class="mc-item" id="l' + li + 'q' + qi + '" data-ans="' + fq.ans + '" data-done="0">'
-          + '<div class="mc-q">' + esc(fq.q) + '</div>'
-          + '<div class="mc-opts">'
-          + fq.opts.map((opt, oi) =>
-            '<button class="mc-opt" onclick="ansQ(' + li + ',' + qi + ',' + oi + ',this)">'
-            + esc(opt) + '</button>'
-          ).join('')
-          + '</div>'
-          + '<div class="mc-feedback" id="l' + li + 'q' + qi + 'fb"></div>'
-          + '</div>'
-        ).join('')
-      : '';
-
-    // Tips
-    const tipsHtml = meta.tips.length
-      ? '<div class="tips-box"><div class="tips-title">&#x1F4A1; Quick Reference</div>'
-        + meta.tips.map(t => '<div class="tip-item">&#9658; ' + esc(t) + '</div>').join('')
-        + '</div>'
-      : '';
-
-    return '<div class="level-card">'
-      + '<div class="level-inner">'
-      + '<div class="level-header" onclick="toggleLevel(' + li + ')">'
-      + '<div class="level-badge" style="background:' + meta.color + '22;border:2px solid ' + meta.color + ';color:' + meta.color + '">'
-      + meta.emoji + ' LEVEL ' + (li + 1)
+  /* ── Fiesta Fatal HTML ── */
+  function buildFF(isWeak) {
+    const charCards = CHARACTERS.map(c =>
+      '<div class="char-card">'
+      + '<div class="char-header">'
+      + '<div class="char-name">' + esc(c.name) + '</div>'
+      + '<div class="char-role">' + esc(c.role) + '</div>'
       + '</div>'
-      + '<div class="level-title">' + esc(meta.shortName) + '</div>'
-      + '<div class="level-score" style="color:' + pctColor + '">' + cat.correct + '/' + cat.total + ' (' + cat.pct + '%)</div>'
-      + '<div class="level-xp" style="color:' + meta.color + '">+' + meta.xp + ' XP</div>'
-      + '<div class="level-check" id="lcheck' + li + '">&#x2B1C;</div>'
+      + '<div class="char-body">'
+      + '<ul class="char-facts">'
+      + c.facts.map(f => '<li>' + esc(f) + '</li>').join('')
+      + '</ul>'
       + '</div>'
-      + '<div class="level-body" id="lbody' + li + '">'
-      + tipsHtml
-      + flashHtml
-      + mcHtml
-      + '<button class="complete-btn" id="lcbtn' + li + '"'
-      + ' onclick="completeLevel(' + li + ')"'
-      + ' style="background:' + meta.color + ';color:' + btnTextColor + '">'
-      + '&#x2713; Mark Level ' + (li + 1) + ' Complete &rarr; +' + meta.xp + ' XP'
-      + '</button>'
       + '</div>'
-      + '</div></div>';
-  }).join('\n');
+    ).join('');
 
-  /* ── Performance overview bars ── */
-  const overviewHtml = allCats.map(cat => {
-    const c = cat.pct >= 75 ? '#00c896' : cat.pct >= 50 ? '#ffd32a' : '#ff4757';
-    const m = CAT_META[cat.name] || { emoji: '&#x1F4DD;', shortName: cat.name };
-    return '<div class="overview-row">'
-      + '<span class="ov-name">' + m.emoji + ' ' + esc(m.shortName) + '</span>'
-      + '<div class="ov-bar-wrap"><div class="ov-bar" style="width:' + cat.pct + '%;background:' + c + '"></div></div>'
-      + '<span class="ov-pct" style="color:' + c + '">' + cat.correct + '/' + cat.total + ' (' + cat.pct + '%)</span>'
+    const events = KEY_EVENTS.map(e => '<li>' + esc(e) + '</li>').join('');
+    const pqs = practicePools['Fiesta Fatal — Characters & Events'];
+
+    return '<div class="page-section" id="sec-ff">'
+      + '<div class="sec-label">Section 1</div>'
+      + '<div class="sec-title">🎭 Fiesta Fatal' + (isWeak ? ' <span class="tag tag-red">Needs Work</span>' : ' <span class="tag tag-green">Review</span>') + '</div>'
+      + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:20px">Character and event questions account for 10/30 of the MC score. Know these cold.</p>'
+      + '<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;font-weight:700">Character Intel</div>'
+      + '<div class="char-grid">' + charCards + '</div>'
+      + '<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:28px 0 10px;font-weight:700">Key Events — Know These</div>'
+      + '<ul class="event-list">' + events + '</ul>'
+      + buildMCPractice(pqs, 'ff')
+      + '</div>';
+  }
+
+  /* ── Preterite HTML ── */
+  function buildPret(isWeak) {
+    const regularTable = makeConjTable('Regular Preterite', [
+      ['yo',       'habl<span class="ending">é</span>',       'com<span class="ending">í</span>',       'escrib<span class="ending">í</span>'],
+      ['tú',       'habl<span class="ending">aste</span>',    'com<span class="ending">iste</span>',    'escrib<span class="ending">iste</span>'],
+      ['él/ella',  'habl<span class="ending">ó</span>',       'com<span class="ending">ió</span>',      'escrib<span class="ending">ió</span>'],
+      ['nosotros', 'habl<span class="ending">amos</span>',    'com<span class="ending">imos</span>',    'escrib<span class="ending">imos</span>'],
+      ['ellos',    'habl<span class="ending">aron</span>',    'com<span class="ending">ieron</span>',   'escrib<span class="ending">ieron</span>'],
+    ], ['-AR (hablar)','-ER (comer)','-IR (escribir)']);
+
+    const irregTable = makeConjTable('Must-Know Irregulars', [
+      ['ser / ir', '<span class="irr">fui</span>', '<span class="irr">fuiste</span>', '<span class="irr">fue</span>', '<span class="irr">fuimos</span>', '<span class="irr">fueron</span>'],
+      ['hacer',    '<span class="irr">hice</span>', '<span class="irr">hiciste</span>', '<span class="key">hizo</span>', '<span class="irr">hicimos</span>', '<span class="irr">hicieron</span>'],
+      ['tener',    '<span class="irr">tuve</span>', '<span class="irr">tuviste</span>', '<span class="irr">tuvo</span>', '<span class="irr">tuvimos</span>', '<span class="irr">tuvieron</span>'],
+      ['estar',    '<span class="irr">estuve</span>', '<span class="irr">estuviste</span>', '<span class="irr">estuvo</span>', '<span class="irr">estuvimos</span>', '<span class="irr">estuvieron</span>'],
+      ['venir',    '<span class="irr">vine</span>', '<span class="irr">viniste</span>', '<span class="irr">vino</span>', '<span class="irr">vinimos</span>', '<span class="irr">vinieron</span>'],
+      ['decir',    '<span class="irr">dije</span>', '<span class="irr">dijiste</span>', '<span class="irr">dijo</span>', '<span class="irr">dijimos</span>', '<span class="irr">dijeron</span>'],
+      ['saber',    '<span class="irr">supe</span>', '<span class="irr">supiste</span>', '<span class="irr">supo</span>', '<span class="irr">supimos</span>', '<span class="irr">supieron</span>'],
+      ['poder',    '<span class="irr">pude</span>', '<span class="irr">pudiste</span>', '<span class="irr">pudo</span>', '<span class="irr">pudimos</span>', '<span class="irr">pudieron</span>'],
+      ['poner',    '<span class="irr">puse</span>', '<span class="irr">pusiste</span>', '<span class="irr">puso</span>', '<span class="irr">pusimos</span>', '<span class="irr">pusieron</span>'],
+      ['querer',   '<span class="irr">quise</span>', '<span class="irr">quisiste</span>', '<span class="irr">quiso</span>', '<span class="irr">quisimos</span>', '<span class="irr">quisieron</span>'],
+      ['traer',    '<span class="irr">traje</span>', '<span class="irr">trajiste</span>', '<span class="irr">trajo</span>', '<span class="irr">trajimos</span>', '<span class="key">trajeron</span>'],
+      ['dar',      '<span class="irr">di</span>', '<span class="irr">diste</span>', '<span class="irr">dio</span>', '<span class="irr">dimos</span>', '<span class="irr">dieron</span>'],
+      ['ver',      '<span class="irr">vi</span>', '<span class="irr">viste</span>', '<span class="irr">vio</span>', '<span class="irr">vimos</span>', '<span class="irr">vieron</span>'],
+    ], ['yo','tú','él','nos.','ellos']);
+
+    const rules = [
+      { title: 'Spelling Changes — YO only', cls: 'highlight', content:
+        '<b>-CAR</b> → qué: practicar → <code>practiqué</code>, tocar → <code>toqué</code><br>'
+        + '<b>-GAR</b> → gué: jugar → <code>jugué</code>, llegar → <code>llegué</code><br>'
+        + '<b>-ZAR</b> → cé: empezar → <code>empecé</code>, comenzar → <code>comencé</code><br>'
+        + '<span style="font-size:0.76rem;color:var(--muted)">These ONLY change in the YO form. All other forms are normal.</span>' },
+      { title: 'i → y Rule (leer, creer, oír)', cls: '', content:
+        'When <b>i</b> falls between two vowels → write <b>y</b><br>'
+        + 'leer: <code>leyó</code> / <code>leyeron</code> (NOT leió / leieron)<br>'
+        + 'creer: <code>creyó</code> / <code>creyeron</code><br>'
+        + 'oír: <code>oyó</code> / <code>oyeron</code><br>'
+        + '<span style="font-size:0.76rem;color:var(--muted)">ONLY affects él/ella and ellos/ellas forms.</span>' },
+      { title: 'Stem-changers — 3rd person only', cls: '', content:
+        'In preterite, e→i and o→u changes happen ONLY in él and ellos:<br>'
+        + '<b>o→u:</b> dormir → <code>durmió</code> / <code>durmieron</code><br>'
+        + '<b>e→i:</b> servir → <code>sirvió</code> / <code>sirvieron</code><br>'
+        + '<b>e→i:</b> repetir → <code>repitió</code> / <code>repitieron</code><br>'
+        + '<b>e→i:</b> pedir → <code>pidió</code> / <code>pidieron</code><br>'
+        + '<span style="font-size:0.76rem;color:var(--muted)">Yo/tú/nosotros forms are 100% regular for these verbs!</span>' },
+    ];
+
+    const ruleBoxes = rules.map(r =>
+      '<div class="rule-box ' + r.cls + '"><div class="rule-title">' + r.title + '</div>'
+      + '<div class="rule-note">' + r.content + '</div></div>'
+    ).join('');
+
+    const fillins = [
+      { label: 'YO → HACER (preterite)', answer: 'hice' },
+      { label: 'ÉL → SER (preterite)',   answer: 'fue' },
+      { label: 'YO → JUGAR (preterite)', answer: 'jugué' },
+      { label: 'ÉL → LEER (preterite)',  answer: 'leyó' },
+      { label: 'YO → TENER (preterite)', answer: 'tuve' },
+      { label: 'YO → EMPEZAR (pret.)',   answer: 'empecé' },
+      { label: 'ÉL → PODER (pret.)',     answer: 'pudo' },
+      { label: 'YO → PONER (pret.)',     answer: 'puse' },
+      { label: 'ÉL → QUERER (pret.)',    answer: 'quiso' },
+      { label: 'ÉL → TRAER (pret.)',     answer: 'trajo' },
+      { label: 'ÉL → DAR (pret.)',       answer: 'dio' },
+      { label: 'YO → VER (pret.)',       answer: 'vi' },
+    ];
+
+    const pqs = practicePools['Preterite Conjugation'];
+
+    return '<div class="page-section" id="sec-pret">'
+      + '<div class="sec-label">Section 2a</div>'
+      + '<div class="sec-title">⚔️ Preterite Conjugation' + (isWeak ? ' <span class="tag tag-red">Needs Work</span>' : ' <span class="tag tag-green">Review</span>') + '</div>'
+      + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:20px">Used for actions that were completed at a specific moment in the past. "I did", "he went", "they arrived."</p>'
+      + '<div class="gram-tables">' + regularTable + irregTable + '</div>'
+      + '<div class="rule-grid" style="margin-top:20px">' + ruleBoxes + '</div>'
+      + buildFillin(fillins, 'pret')
+      + buildMCPractice(pqs, 'pret')
+      + '</div>';
+  }
+
+  /* ── Imperfect HTML ── */
+  function buildImp(isWeak) {
+    const regularTable = makeConjTable('Regular Imperfect', [
+      ['yo',       'habl<span class="ending">aba</span>',      'com<span class="ending">ía</span>',      'viv<span class="ending">ía</span>'],
+      ['tú',       'habl<span class="ending">abas</span>',     'com<span class="ending">ías</span>',     'viv<span class="ending">ías</span>'],
+      ['él/ella',  'habl<span class="ending">aba</span>',      'com<span class="ending">ía</span>',      'viv<span class="ending">ía</span>'],
+      ['nosotros', 'habl<span class="ending">ábamos</span>',   'com<span class="ending">íamos</span>',   'viv<span class="ending">íamos</span>'],
+      ['ellos',    'habl<span class="ending">aban</span>',     'com<span class="ending">ían</span>',     'viv<span class="ending">ían</span>'],
+    ], ['-AR (hablar)','-ER (comer)','-IR (vivir)']);
+
+    const irregTable = makeConjTable('Only 3 Irregulars', [
+      ['ser', '<span class="irr">era</span>',  '<span class="irr">eras</span>',  '<span class="irr">era</span>',  '<span class="irr">éramos</span>', '<span class="irr">eran</span>'],
+      ['ir',  '<span class="irr">iba</span>',  '<span class="irr">ibas</span>',  '<span class="irr">iba</span>',  '<span class="irr">íbamos</span>', '<span class="irr">iban</span>'],
+      ['ver', '<span class="key">veía</span>', '<span class="key">veías</span>', '<span class="key">veía</span>', '<span class="key">veíamos</span>', '<span class="key">veían</span>'],
+    ], ['yo','tú','él','nos.','ellos']);
+
+    const vsRows = [
+      ['Preterite (use when...)', 'Imperfect (use when...)'],
+      ['<div class="vs-label">Single completed action</div><div class="vs-ex">Ayer fui al mercado. (I went to the market yesterday.)</div>',
+       '<div class="vs-label">Repeated / habitual past</div><div class="vs-ex">Siempre iba al mercado. (I used to always go.)</div>'],
+      ['<div class="vs-label">Specific time signal</div><div class="vs-ex">El lunes comí tacos. (Last Monday I ate tacos.)</div>',
+       '<div class="vs-label">Ongoing background</div><div class="vs-ex">Comía cuando llegó. (I was eating when he arrived.)</div>'],
+      ['<div class="vs-label">Sequence of events</div><div class="vs-ex">Llegó, vio, y salió. (He arrived, saw it, and left.)</div>',
+       '<div class="vs-label">Age / descriptions in past</div><div class="vs-ex">De niño era travieso. (As a kid I was mischievous.)</div>'],
+    ];
+
+    const vsHtml = '<table class="vs-table">'
+      + '<tr><th>' + vsRows[0][0] + '</th><th>' + vsRows[0][1] + '</th></tr>'
+      + vsRows.slice(1).map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('')
+      + '</table>';
+
+    const triggers = [
+      { title: 'Imperfect trigger words', cls: 'highlight', content:
+        '<b>siempre</b> (always) · <b>todos los días</b> (every day)<br>'
+        + '<b>de niño/a</b> (as a kid) · <b>generalmente</b> (usually)<br>'
+        + '<b>mientras</b> (while) · <b>cada día/semana</b> (each day/week)<br>'
+        + '<b>frecuentemente</b> (frequently) · <b>a veces</b> (sometimes)' },
+    ];
+
+    const fillins = [
+      { label: 'YO → SER (imperfect)',       answer: 'era' },
+      { label: 'ÉL → IR (imperfect)',        answer: 'iba' },
+      { label: 'YO → VER (imperfect)',       answer: 'veía' },
+      { label: 'ELLOS → HABLAR (imp.)',      answer: 'hablaban' },
+      { label: 'NOSOTROS → IR (imp.)',       answer: 'íbamos' },
+      { label: 'TÚ → COMER (imperfect)',     answer: 'comías' },
+    ];
+
+    const pqs = practicePools['Imperfect Conjugation'];
+
+    return '<div class="page-section" id="sec-imp">'
+      + '<div class="sec-label">Section 2b</div>'
+      + '<div class="sec-title">🌀 Imperfect Conjugation' + (isWeak ? ' <span class="tag tag-red">Needs Work</span>' : ' <span class="tag tag-green">Review</span>') + '</div>'
+      + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:20px">Used for ongoing, repeated, or habitual past actions — and for descriptions. "I used to", "was doing", "every day."</p>'
+      + '<div class="gram-tables">' + regularTable + irregTable + '</div>'
+      + '<div class="rule-grid" style="margin-top:20px">'
+      + triggers.map(r => '<div class="rule-box ' + r.cls + '"><div class="rule-title">' + r.title + '</div><div class="rule-note">' + r.content + '</div></div>').join('')
+      + '</div>'
+      + '<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:24px 0 6px;font-weight:700">Preterite vs. Imperfect — Side by Side</div>'
+      + vsHtml
+      + buildFillin(fillins, 'imp')
+      + buildMCPractice(pqs, 'imp')
+      + '</div>';
+  }
+
+  /* ── Vocabulary HTML ── */
+  function buildVocab(isWeak) {
+    const cards = VOCAB_LIST.map((w, i) =>
+      '<div class="vocab-card" id="vc' + i + '" onclick="flipVocab(' + i + ')">'
+      + '<div class="vocab-front">'
+      + '<div class="vocab-es">' + w.es + '</div>'
+      + '<div class="vocab-flip-hint">tap for definition</div>'
+      + '</div>'
+      + '<div class="vocab-back">'
+      + '<div class="vocab-en">' + esc(w.en) + '</div>'
+      + '<div class="vocab-ex">' + w.ex + '</div>'
+      + '<div class="vocab-actions">'
+      + '<button class="vocab-btn vocab-btn-know" onclick="event.stopPropagation();markVocab(' + i + ',true)">Got it ✓</button>'
+      + '<button class="vocab-btn vocab-btn-review" onclick="event.stopPropagation();markVocab(' + i + ',false)">Review again</button>'
+      + '</div>'
+      + '</div>'
+      + '</div>'
+    ).join('');
+
+    const pqs = practicePools['Vocabulary'];
+
+    return '<div class="page-section" id="sec-vocab">'
+      + '<div class="sec-label">Section 3</div>'
+      + '<div class="sec-title">📖 Vocabulary' + (isWeak ? ' <span class="tag tag-red">Needs Work</span>' : ' <span class="tag tag-green">Review</span>') + '</div>'
+      + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:16px">All 20 words from the story. Tap a card to see the definition and example, then mark it.</p>'
+      + '<div class="vocab-progress" id="vocab-progress">0 / ' + VOCAB_LIST.length + ' marked as known</div>'
+      + '<div class="vocab-grid">' + cards + '</div>'
+      + buildMCPractice(pqs, 'vocab')
+      + '</div>';
+  }
+
+  /* ── Helpers for section builders ── */
+  function makeConjTable(title, rows, colHeaders) {
+    const ths = colHeaders.map(h => '<th>' + h + '</th>').join('');
+    const trs = rows.map(r => '<tr><td class="subj">' + r[0] + '</td>' + r.slice(1).map(c => '<td class="conj">' + c + '</td>').join('') + '</tr>').join('');
+    return '<div class="gram-table-wrap">'
+      + '<div class="gram-table-title">' + title + '</div>'
+      + '<table class="gram-table"><thead><tr><th>Form</th>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>'
+      + '</div>';
+  }
+
+  function buildFillin(items, prefix) {
+    const cells = items.map((item, i) =>
+      '<div class="fillin-item">'
+      + '<div class="fillin-prompt">Conjugate: <b>' + esc(item.label) + '</b></div>'
+      + '<div class="fillin-input-wrap">'
+      + '<input class="fillin-input" id="fi_' + prefix + i + '" type="text" autocomplete="off" autocorrect="off" spellcheck="false"'
+      + ' data-answer="' + esc(item.answer) + '"'
+      + ' onkeydown="if(event.key===\'Enter\')checkFillin(\'' + prefix + '\', ' + i + ')"'
+      + ' placeholder="type answer…" />'
+      + '<button class="fillin-check" onclick="checkFillin(\'' + prefix + '\', ' + i + '\')">Check</button>'
+      + '</div>'
+      + '<div class="fillin-feedback" id="ff_' + prefix + i + '"></div>'
+      + '</div>'
+    ).join('');
+    return '<div class="fillin-wrap"><div class="fillin-title">Fill-in Practice — Type the Conjugation</div>'
+      + '<div class="fillin-grid">' + cells + '</div></div>';
+  }
+
+  function buildMCPractice(qs, prefix) {
+    const items = qs.map((q, i) =>
+      '<div class="mc-item" id="mc_' + prefix + '_' + i + '" data-ans="' + q.ans + '" data-done="0">'
+      + '<div class="mc-q">' + esc(q.q) + '</div>'
+      + '<div class="mc-opts">'
+      + q.opts.map((opt, oi) =>
+        '<button class="mc-opt" onclick="checkMC(\'' + prefix + '\',' + i + ',' + oi + ',this)">' + esc(opt) + '</button>'
+      ).join('')
+      + '</div>'
+      + '<div class="mc-feedback" id="mc_' + prefix + '_' + i + '_fb"></div>'
+      + '</div>'
+    ).join('');
+    return '<div class="practice-section"><div class="practice-title">Practice Questions</div>' + items + '</div>';
+  }
+
+  /* ── Overview section ── */
+  const { catScores, weakSections, weakQuestions, totalAttempts, latestScore, bestScore, avgScore } = perf;
+  const latestColor = latestScore >= 80 ? 'var(--green)' : latestScore >= 65 ? 'var(--yellow)' : 'var(--red)';
+  const bestColor   = bestScore   >= 80 ? 'var(--green)' : bestScore   >= 65 ? 'var(--yellow)' : 'var(--red)';
+
+  const barRows = catScores.map(cat => {
+    const c = cat.pct >= 75 ? 'var(--green)' : cat.pct >= 50 ? 'var(--yellow)' : 'var(--red)';
+    const short = { 'Fiesta Fatal — Characters & Events':'Fiesta Fatal','Preterite Conjugation':'Preterite','Imperfect Conjugation':'Imperfect','Vocabulary':'Vocabulary' };
+    return '<div class="bar-row">'
+      + '<span class="bar-name">' + esc(short[cat.name] || cat.name) + '</span>'
+      + '<div class="bar-track"><div class="bar-fill" style="width:' + cat.pct + '%;background:' + c + '"></div></div>'
+      + '<span class="bar-pct" style="color:' + c + '">' + cat.correct + '/' + cat.total + ' (' + cat.pct + '%)</span>'
       + '</div>';
   }).join('');
 
-  /* ── Inline JavaScript (use double-quoted strings throughout to avoid escaping issues) ── */
-  const freshCounts = JSON.stringify(levels.map(l => l.fresh.length));
+  const weakListHtml = weakQuestions.length
+    ? '<ul class="weak-list">'
+      + weakQuestions.slice(0, 10).map(q => {
+          const pct = q.total > 0 ? Math.round(q.correct / q.total * 100) : 0;
+          return '<li>'
+            + esc(q.question)
+            + '<span class="wl-pct">' + pct + '%</span>'
+            + '<span class="wl-ans">Correct answer: ' + esc(q.correct_ans) + '</span>'
+            + '</li>';
+        }).join('')
+      + '</ul>'
+    : '<p style="color:var(--muted);font-size:0.86rem">No consistent problem questions yet — keep taking practice tests.</p>';
+
+  const overviewSection = '<div class="page-section" id="sec-overview">'
+    + '<div class="sec-label">Overview</div>'
+    + '<div class="sec-title">Dylan\'s Performance</div>'
+    + '<div class="stats-row">'
+    + '<div class="stat-chip"><div class="val">' + totalAttempts + '</div><div class="lbl">Tests Taken</div></div>'
+    + '<div class="stat-chip"><div class="val" style="color:' + latestColor + '">' + latestScore + '%</div><div class="lbl">Latest Score</div></div>'
+    + '<div class="stat-chip"><div class="val" style="color:' + bestColor + '">' + bestScore + '%</div><div class="lbl">Best Score</div></div>'
+    + '<div class="stat-chip"><div class="val">' + avgScore + '%</div><div class="lbl">Avg Score</div></div>'
+    + '</div>'
+    + (catScores.length ? '<div class="score-bars" style="margin-top:28px"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;font-weight:700">Section Scores</div>' + barRows + '</div>' : '')
+    + (weakQuestions.length ? '<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:28px 0 10px;font-weight:700">Questions You Keep Getting Wrong</div>' + weakListHtml : '')
+    + '</div>';
+
+  /* ── Nav tabs ── */
+  const navLinks = [
+    ['#sec-overview', 'Overview'],
+    ['#sec-ff',       'Fiesta Fatal'],
+    ['#sec-pret',     'Preterite'],
+    ['#sec-imp',      'Imperfect'],
+    ['#sec-vocab',    'Vocab'],
+    ['/',             'Take Test →'],
+  ].map(([href, label]) =>
+    '<a href="' + href + '"' + (href === '#sec-overview' ? ' class="active"' : '') + '>' + label + '</a>'
+  ).join('');
+
+  /* ── Content sections ── */
+  const ffWeak   = weakSections.has('Fiesta Fatal — Characters & Events');
+  const pretWeak = weakSections.has('Preterite Conjugation');
+  const impWeak  = weakSections.has('Imperfect Conjugation');
+  const vocWeak  = weakSections.has('Vocabulary');
+
+  const divider = '<hr class="section-divider">';
+
+  /* ── JavaScript ── */
   const JS = `
 "use strict";
-var TOTAL_XP    = ${totalXP};
-var NUM_LEVELS  = ${levels.length};
-var earnedXP    = 0;
-var doneCount   = 0;
-var levelDone   = new Array(NUM_LEVELS).fill(false);
-var mcAnswers   = {};
-for (var i = 0; i < NUM_LEVELS; i++) mcAnswers[i] = {};
-var freshCounts = ${freshCounts};
-
-function toggleLevel(li) {
-  var body = document.getElementById("lbody" + li);
-  if (body) body.classList.toggle("open");
+// ── Fillin checks ──────────────────────────────────────────────────────────
+function checkFillin(prefix, i) {
+  var inp = document.getElementById("fi_" + prefix + i);
+  var fb  = document.getElementById("ff_" + prefix + i);
+  if (!inp || inp.disabled) return;
+  var answer = inp.dataset.answer.trim().toLowerCase();
+  var val    = inp.value.trim().toLowerCase()
+    .replace(/á/g,"a").replace(/é/g,"e").replace(/í/g,"i").replace(/ó/g,"o").replace(/ú/g,"u");
+  var ansNorm = answer
+    .replace(/á/g,"a").replace(/é/g,"e").replace(/í/g,"i").replace(/ó/g,"o").replace(/ú/g,"u");
+  if (val === ansNorm) {
+    inp.classList.add("correct");
+    inp.disabled = true;
+    fb.innerHTML = '<span style="color:var(--green)">✓ Correct: ' + inp.dataset.answer + '</span>';
+  } else {
+    inp.classList.add("wrong");
+    fb.innerHTML = '<span style="color:var(--red)">✗ The answer is: <b>' + inp.dataset.answer + '</b></span>';
+    setTimeout(function() { inp.classList.remove("wrong"); }, 1200);
+  }
 }
 
-function flipCard(el) {
-  el.classList.toggle("flipped");
-}
-
-function ansQ(li, qi, chosen, btn) {
-  var item = document.getElementById("l" + li + "q" + qi);
+// ── MC checks ─────────────────────────────────────────────────────────────
+function checkMC(prefix, qi, chosen, btn) {
+  var item = document.getElementById("mc_" + prefix + "_" + qi);
   if (!item || item.dataset.done === "1") return;
   item.dataset.done = "1";
   var ans  = parseInt(item.dataset.ans, 10);
   var opts = item.querySelectorAll(".mc-opt");
   opts.forEach(function(b) { b.disabled = true; });
-  var fb = document.getElementById("l" + li + "q" + qi + "fb");
   opts[ans].classList.add("correct");
+  var fb = document.getElementById("mc_" + prefix + "_" + qi + "_fb");
   if (chosen === ans) {
-    if (fb) fb.innerHTML = "<span style=\\"color:#00c896\\">&#x2713; Correct! Great work.</span>";
-    xpPop(btn, "+10 XP");
-    earnedXP += 10;
-    updateBar();
+    if (fb) fb.innerHTML = '<span style="color:var(--green)">✓ Correct.</span>';
   } else {
     btn.classList.add("wrong");
-    if (fb) fb.innerHTML = "<span style=\\"color:#ff4757\\">&#x2717; Not quite &mdash; review the tips and try to remember!</span>";
-  }
-  mcAnswers[li][qi] = (chosen === ans);
-  checkShowComplete(li);
-}
-
-function checkShowComplete(li) {
-  if (Object.keys(mcAnswers[li]).length >= freshCounts[li]) {
-    var btn = document.getElementById("lcbtn" + li);
-    if (btn) btn.style.display = "block";
+    if (fb) fb.innerHTML = '<span style="color:var(--red)">✗ The correct answer is highlighted above.</span>';
   }
 }
 
-function completeLevel(li) {
-  if (levelDone[li]) return;
-  levelDone[li] = true;
-  doneCount++;
-  var check = document.getElementById("lcheck" + li);
-  if (check) check.textContent = "\\u2705";
-  var body = document.getElementById("lbody" + li);
-  if (body) body.classList.remove("open");
-  var btn = document.getElementById("lcbtn" + li);
-  if (btn) btn.disabled = true;
-  earnedXP += 50;
-  updateBar();
-  xpPop(check || document.body, "LEVEL COMPLETE! +50 XP");
-  if (doneCount >= NUM_LEVELS) unlockBoss();
+// ── Vocab flashcards ──────────────────────────────────────────────────────
+var vocabKnown = 0;
+function flipVocab(i) {
+  var card = document.getElementById("vc" + i);
+  if (card) card.classList.toggle("flipped");
 }
-
-function updateBar() {
-  var pct = TOTAL_XP > 0 ? Math.min(100, Math.round(earnedXP / TOTAL_XP * 100)) : 0;
-  var fill = document.getElementById("xp-fill");
-  var val  = document.getElementById("xp-val");
-  if (fill) fill.style.width = pct + "%";
-  if (val)  val.textContent  = earnedXP + " / " + TOTAL_XP + " XP";
-}
-
-function unlockBoss() {
-  var card = document.getElementById("boss-card");
-  if (card) { card.classList.remove("locked"); card.classList.add("unlocked"); }
-  var lock = document.getElementById("boss-lock");
-  var icon = document.getElementById("boss-icon");
-  if (lock) lock.style.display = "none";
-  if (icon) icon.style.display = "block";
-  var title = document.getElementById("boss-title");
-  var sub   = document.getElementById("boss-sub");
-  var xpEl  = document.getElementById("boss-xp");
-  if (title) title.textContent = "BOSS BATTLE UNLOCKED!";
-  if (sub)   sub.textContent   = "All levels complete. Go fight the Final Boss!";
-  if (xpEl)  xpEl.textContent  = "Total XP Earned: " + earnedXP + " \\u2B50";
-  var bossBtn = document.getElementById("boss-btn");
-  if (bossBtn) { bossBtn.classList.remove("disabled"); bossBtn.style.pointerEvents = ""; }
-  setTimeout(function() {
-    var el = document.getElementById("boss-card");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, 300);
-}
-
-function xpPop(anchor, text) {
-  var rect = anchor && anchor.getBoundingClientRect
-    ? anchor.getBoundingClientRect()
-    : { top: 200, left: 200, width: 60 };
-  var pop = document.createElement("div");
-  pop.className = "xp-pop";
-  pop.textContent = text;
-  pop.style.top  = (rect.top + window.scrollY - 8) + "px";
-  pop.style.left = (rect.left + rect.width / 2 - 40) + "px";
-  document.body.appendChild(pop);
-  setTimeout(function() { if (pop.parentNode) pop.parentNode.removeChild(pop); }, 1400);
-}
-
-window.addEventListener("DOMContentLoaded", function() {
-  if (NUM_LEVELS > 0) toggleLevel(0);
-  for (var i = 0; i < NUM_LEVELS; i++) {
-    if (freshCounts[i] === 0) {
-      var btn = document.getElementById("lcbtn" + i);
-      if (btn) btn.style.display = "block";
-    }
+function markVocab(i, known) {
+  var card = document.getElementById("vc" + i);
+  if (!card) return;
+  card.classList.remove("known", "review-again");
+  if (known) {
+    card.classList.add("known");
+  } else {
+    card.classList.add("review-again");
   }
-});
+  updateVocabProgress();
+}
+function updateVocabProgress() {
+  var known = document.querySelectorAll(".vocab-card.known").length;
+  var el = document.getElementById("vocab-progress");
+  if (el) el.innerHTML = "<b>" + known + "</b> / ${VOCAB_LIST.length} marked as known";
+}
+
+// ── Nav active state ──────────────────────────────────────────────────────
+var navLinks = document.querySelectorAll("#top-nav a");
+window.addEventListener("scroll", function() {
+  var sections = document.querySelectorAll(".page-section");
+  var scrollY = window.scrollY + 80;
+  var current = "";
+  sections.forEach(function(sec) {
+    if (sec.offsetTop <= scrollY) current = "#" + sec.id;
+  });
+  navLinks.forEach(function(a) {
+    a.classList.toggle("active", a.getAttribute("href") === current);
+  });
+}, { passive: true });
 `;
 
-  /* ── Assemble page ── */
-  const lines = [
-    '<!DOCTYPE html>',
-    '<html lang="en">',
-    '<head>',
-    '<meta charset="UTF-8" />',
-    '<meta name="viewport" content="width=device-width, initial-scale=1.0" />',
-    '<title>Spanish Quest &mdash; Study Guide for ' + esc(studentName) + '</title>',
-    '<style>' + CSS + '</style>',
-    '</head>',
-    '<body>',
-
-    // XP bar
-    '<div id="xp-bar">',
-    '<div id="xp-label">&#x2B50; XP PROGRESS</div>',
-    '<div id="xp-track"><div id="xp-fill"></div></div>',
-    '<div id="xp-val">0 / ' + totalXP + ' XP</div>',
-    '</div>',
-
-    // Hero card
-    '<div class="hero-card">',
-    '<div class="hero-inner">',
-    '<div class="hero-icon">&#x1F9B8;</div>',
-    '<div class="hero-text">',
-    '<h1>SPANISH QUEST: <span>Boss Prep</span></h1>',
-    '<div class="sub">Personalized Study Guide for ' + esc(studentName) + '</div>',
-    '</div>',
-    '<div class="hero-stats">',
-    '<div class="hero-score-val" style="color:' + scoreColor + '">' + overallPct + '%</div>',
-    '<div class="hero-score-lbl">Last Practice Score</div>',
-    '<div class="hero-status">'
-      + (weakCount > 0
-          ? '&#x26A0;&#xFE0F; ' + weakCount + ' area' + (weakCount > 1 ? 's' : '') + ' to level up'
-          : '&#x1F3C6; All areas above 75%!')
-      + '</div>',
-    '</div>',
-    '</div>',
-    '</div>',
-
-    // Mission briefing
-    '<div class="section-wrap">',
-    '<div class="briefing">',
-    '&#x1F4DC; <strong>MISSION BRIEFING:</strong> The Final Boss (tu examen de espa&ntilde;ol) is coming. '
-    + 'Complete each level to power up your skills. Review the flashcards, crush the practice challenges, '
-    + 'and mark each level complete to earn XP. Unlock the Boss Battle when you\'re ready to take the full practice test!',
-    '</div>',
-    '</div>',
-
-    // Overview
-    '<div class="section-wrap">',
-    '<div class="section-lbl">Performance Overview</div>',
-    overviewHtml,
-    '</div>',
-
-    // Levels
-    levelsHtml,
-
-    // Boss Battle
-    '<div class="boss-card">',
-    '<div class="boss-inner locked" id="boss-card">',
-    '<div class="boss-lock" id="boss-lock">&#x1F512;</div>',
-    '<div class="boss-icon" id="boss-icon">&#x1F409;</div>',
-    '<div class="boss-title" id="boss-title">BOSS BATTLE</div>',
-    '<div class="boss-sub" id="boss-sub">Complete all levels above to unlock the Final Boss Battle</div>',
-    '<div class="boss-xp" id="boss-xp"></div>',
-    '<a href="/" class="boss-btn disabled" id="boss-btn">&#x2694;&#xFE0F; TAKE THE FULL PRACTICE TEST</a>',
-    '</div>',
-    '</div>',
-
-    '<script>' + JS + '</script>',
-    '</body>',
-    '</html>',
-  ];
-
-  return lines.join('\n');
+  /* ── Assemble final page ── */
+  return '<!DOCTYPE html>\n<html lang="en">\n<head>'
+    + '\n<meta charset="UTF-8" />'
+    + '\n<meta name="viewport" content="width=device-width, initial-scale=1.0" />'
+    + '\n<title>Study Guide — Dylan</title>'
+    + '\n<style>' + CSS + '</style>'
+    + '\n</head>\n<body>'
+    + '\n<nav id="top-nav">' + navLinks + '</nav>'
+    + '\n<div class="guide-header">'
+    + '\n<h1>DYLAN\'S <span>STUDY GUIDE</span></h1>'
+    + '\n<div class="sub">Spanish II · Spring Final · Built from all ' + totalAttempts + ' practice test' + (totalAttempts !== 1 ? 's' : '') + '</div>'
+    + '\n</div>'
+    + '\n' + overviewSection
+    + '\n' + divider
+    + '\n' + buildFF(ffWeak)
+    + '\n' + divider
+    + '\n' + buildPret(pretWeak)
+    + '\n' + divider
+    + '\n' + buildImp(impWeak)
+    + '\n' + divider
+    + '\n' + buildVocab(vocWeak)
+    + '\n<script>' + JS + '\n</script>'
+    + '\n</body>\n</html>';
 }
 
 module.exports = { generateStudyGuide };

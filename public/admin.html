@@ -337,6 +337,7 @@
 
       <div class="toolbar">
         <h2>All Attempts (${sessions.length})</h2>
+        <a href="/api/admin/study-guide" target="_blank" class="btn btn-green" style="text-decoration:none">📚 Open Study Guide</a>
         <a href="/api/admin/export.csv" class="btn btn-muted" download>⬇ Export CSV</a>
         <button class="btn btn-red" onclick="regradeAll()" title="Reset all open-response scores so you can re-grade with the new 0–3 rubric">↺ Regrade All Open</button>
         <button class="btn btn-primary" onclick="loadDashboard()">↻ Refresh</button>
@@ -509,11 +510,7 @@
         ${logHtml || '<p style="color:var(--muted)">No log data.</p>'}
       </div>
 
-      <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
-        <a href="/api/admin/study-guide/${data.id}" target="_blank" class="btn btn-green"
-           style="text-decoration:none">
-          📚 Generate Study Guide
-        </a>
+      <div style="margin-top:16px;text-align:right">
         <button class="btn btn-red" onclick="deleteSession('${data.id}')">🗑 Delete This Attempt</button>
       </div>
     `;

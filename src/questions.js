@@ -338,6 +338,58 @@ const PRETERITE = [
     "Ella ___ (SABER) la verdad sobre Riky y el cártel.",
     ["sabía","sabe","saberá","supo"], 3,
     "SABER: supe, supiste, supo, supimos, supieron."),
+
+  // Missing irregular preterites — poder, poner, querer, traer, dar, ver
+  q('p31', S.PRET,
+    "Él no ___ (PODER) escapar del cártel a tiempo.",
+    ["podía","puede","podría","pudo"], 3,
+    "PODER: pude, pudiste, pudo, pudimos, pudieron. (Stem: PUD-)"),
+
+  q('p32', S.PRET,
+    "Yo ___ (PODER) terminar toda la tarea antes de la fiesta.",
+    ["podía","puedo","podría","pude"], 3,
+    "PODER yo = pude. (Stem: PUD- — no accent on the final vowel for irregular preterites!)"),
+
+  q('p33', S.PRET,
+    "Vanesa ___ (PONER) la comida en el puesto del mercado.",
+    ["ponía","pone","pondrá","puso"], 3,
+    "PONER: puse, pusiste, puso, pusimos, pusieron. (Stem: PUS-)"),
+
+  q('p34', S.PRET,
+    "Yo ___ (PONER) mis libros en la mochila antes de salir.",
+    ["ponía","pongo","pondría","puse"], 3,
+    "PONER yo = puse. (Stem: PUS-)"),
+
+  q('p35', S.PRET,
+    "Jorge ___ (QUERER) proteger a su hija del cártel.",
+    ["quería","quiere","querría","quiso"], 3,
+    "QUERER: quise, quisiste, quiso, quisimos, quisieron. (Stem: QUIS-)"),
+
+  q('p36', S.PRET,
+    "Riky ___ (TRAER) un regalo especial para la quinceañera.",
+    ["traía","trae","traerá","trajo"], 3,
+    "TRAER: traje, trajiste, trajo, trajimos, trajeron. (Stem: TRAJ- — no 'i' in ellos: trajeron)"),
+
+  q('p37', S.PRET,
+    "El taxista le ___ (DAR) un recibo al cliente después del viaje.",
+    ["daba","da","dará","dio"], 3,
+    "DAR: di, diste, dio, dimos, dieron. (No accent — single syllable forms)"),
+
+  q('p38', S.PRET,
+    "Yo ___ (VER) a Edgar en la calle la noche de la fiesta.",
+    ["veía","veo","vería","vi"], 3,
+    "VER yo preterite = vi. (VER preterite: vi, viste, vio, vimos, vieron — don't confuse with imperfect veía!)"),
+
+  // -IR stem-changers (e→i, o→u — 3rd person ONLY)
+  q('p39', S.PRET,
+    "El bebé ___ (DORMIR) doce horas anoche. (o→u stem-changer)",
+    ["dormía","duerme","dormió","durmió"], 3,
+    "DORMIR -IR stem-changer: durmió (él/ella), durmieron (ellos). Only 3rd person changes o→u in preterite."),
+
+  q('p40', S.PRET,
+    "Los estudiantes ___ (REPETIR) las palabras del vocabulario. (e→i stem-changer)",
+    ["repetían","repiten","repetieron","repitieron"], 3,
+    "REPETIR -IR stem-changer: repitió (él), repitieron (ellos). Only 3rd person changes e→i in preterite."),
 ];
 
 // ════════════════════════════════════════════════════════════

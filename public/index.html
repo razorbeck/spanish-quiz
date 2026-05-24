@@ -332,24 +332,11 @@
   <!-- ── Start Screen ─────────────────────────────────────── -->
   <div id="screen-start" class="screen active">
     <div class="flag">🇪🇸</div>
-    <h2>Final Practice Exam</h2>
-    <p>Spanish II · Spring Semester<br>Enter your name and choose a version to begin.</p>
+    <h2>Spanish II — Final Practice Exam</h2>
+    <p>Spring Semester · Hey Dylan, what do you want to do?</p>
     <div class="start-form">
-      <input type="text" id="student-name" placeholder="Your name" maxlength="60" autocomplete="off" />
-      <select id="version-select">
-        <option value="0">🎲 Random version</option>
-        <option value="1">Version 1</option>
-        <option value="2">Version 2</option>
-        <option value="3">Version 3</option>
-        <option value="4">Version 4</option>
-        <option value="5">Version 5</option>
-        <option value="6">Version 6</option>
-        <option value="7">Version 7</option>
-        <option value="8">Version 8</option>
-        <option value="9">Version 9</option>
-        <option value="10">Version 10</option>
-      </select>
-      <button class="btn btn-primary" onclick="startQuiz()">Start Exam</button>
+      <a href="/study-guide" target="_blank" class="btn" style="background:var(--blue);border:2px solid var(--purple);color:var(--text);text-decoration:none;display:inline-block;text-align:center;padding:16px;font-size:1.05rem;font-weight:700;border-radius:var(--radius)">📖 Study Guide</a>
+      <button class="btn btn-primary" onclick="startQuiz()" style="font-size:1.05rem;padding:16px">✏️ Take Practice Test</button>
     </div>
   </div>
 
@@ -392,7 +379,10 @@
     <p class="sub" id="score-sub"></p>
     <div class="pending-badge">📝 Open response submitted — awaiting teacher review</div>
     <div class="cat-breakdown" id="cat-breakdown"></div>
-    <button class="btn btn-primary" onclick="location.reload()">Take Another Version</button>
+    <div style="display:flex;flex-direction:column;gap:12px;max-width:340px;margin:0 auto">
+      <a href="/study-guide" target="_blank" class="btn" style="background:var(--blue);border:2px solid var(--purple);color:var(--text);text-decoration:none;display:block;text-align:center;padding:14px;font-weight:700;border-radius:var(--radius)">📖 View Updated Study Guide</a>
+      <button class="btn btn-primary" onclick="location.reload()">🔁 Take Another Version</button>
+    </div>
   </div>
 </main>
 
@@ -477,16 +467,12 @@
 
   // ── Start quiz ──────────────────────────────────────────────────────────────
   async function startQuiz() {
-    const name    = document.getElementById('student-name').value.trim();
-    const version = parseInt(document.getElementById('version-select').value, 10);
-    if (!name) { toast('Please enter your name!'); return; }
-
     showScreen('screen-loading');
     try {
       const resp = await fetch('/api/quiz/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentName: name, version: version || 0 }),
+        body: JSON.stringify({ studentName: 'Dylan', version: 0 }),
       });
       if (!resp.ok) throw new Error('Server error');
       const data = await resp.json();
