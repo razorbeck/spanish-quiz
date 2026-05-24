@@ -2,7 +2,8 @@
 const express     = require('express');
 const bcrypt      = require('bcryptjs');
 const db          = require('./db');
-const { getReading } = require('./readings');
+const { getReading }       = require('./readings');
+const { generateStudyGuide } = require('./studyGuide');
 
 const router = express.Router();
 
@@ -161,6 +162,23 @@ router.get('/export.csv', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('admin/export error:', err);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── GET /api/admin/study-guide/:id ───────────────────────────────────────────
+// Returns a self-contained HTML study guide for the given session.
+router.get('/study-guide/:id', requireAuth, async (req, res) => {
+  try {
+    const detail = await db.getSessionDetail(req.params.id);
+    if (!detail) return res.status(404).send('<p>Session not found</p>');
+
+    const html = generateStudyGuide(detail, detail);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(html);
+  } catch (err) {
+    console.error('admin/study-guide error:', err);
+    res.status(500).send('<p>Error generating study guide: ' + err.message + '</p>');
   }
 });
 
