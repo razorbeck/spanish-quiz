@@ -5,6 +5,9 @@ const db       = require('./db');
 const { FIESTA_FATAL, PRETERITE, IMPERFECT, VOCABULARY } = require('./questions');
 const { getReading, READINGS } = require('./readings');
 
+// Combined conjugation pool — preterite + imperfect drawn together as one section
+const CONJUGATION = [...PRETERITE, ...IMPERFECT];
+
 const router = express.Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -45,15 +48,21 @@ function prepareForClient(q) {
 
 /**
  * Build a full MC set for a session:
- *   10 Fiesta Fatal  |  8 Preterite  |  8 Imperfect  |  4 Vocabulary  = 30 total
+ *   15 Fiesta Fatal  |  15 Conjugation (preterite+imperfect mixed)  |  15 Vocabulary  = 45 total
+ *
+ *   Scoring weights:
+ *     Section 1 — Fiesta Fatal   = 20 pts
+ *     Section 2 — Conjugation    = 20 pts
+ *     Section 3 — Vocabulary     = 10 pts
+ *     Section 4 — Open Response  = 15 pts  (graded by teacher, 0/5/10/15)
+ *     Total                      = 65 pts
  */
-const DRAW = { ff: 10, pre: 8, imp: 8, voc: 4 };
+const DRAW = { ff: 15, conj: 15, voc: 15 };
 
 function buildQuestionSet() {
   const raw = [
     ...sample(FIESTA_FATAL, DRAW.ff),
-    ...sample(PRETERITE,    DRAW.pre),
-    ...sample(IMPERFECT,    DRAW.imp),
+    ...sample(CONJUGATION,  DRAW.conj),
     ...sample(VOCABULARY,   DRAW.voc),
   ];
   return raw.map(prepareForClient);

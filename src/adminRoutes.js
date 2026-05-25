@@ -98,8 +98,8 @@ router.post('/grade/:id', requireAuth, async (req, res) => {
   try {
     const { score, notes } = req.body;
     const s = parseInt(score, 10);
-    if (isNaN(s) || s < 0 || s > 3) {
-      return res.status(400).json({ error: 'Score must be 0-3' });
+    if (isNaN(s) || ![0, 5, 10, 15].includes(s)) {
+      return res.status(400).json({ error: 'Score must be 0, 5, 10, or 15' });
     }
     await db.gradeOpenResponse(req.params.id, s, (notes || '').slice(0, 1000));
     res.json({ ok: true });

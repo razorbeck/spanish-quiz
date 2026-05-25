@@ -358,7 +358,7 @@
   <!-- ── Open Response Screen ────────────────────────────── -->
   <div id="screen-open" class="screen">
     <div class="section-banner">
-      <div class="sec-label">Section 4</div>
+      <div class="sec-label">Section 4 — 15 pts</div>
       <h2>Open Response</h2>
     </div>
     <div class="passage-box" id="open-passage-box"></div>
@@ -377,7 +377,7 @@
     </div>
     <h2 id="score-heading">Great job!</h2>
     <p class="sub" id="score-sub"></p>
-    <div class="pending-badge">📝 Open response submitted — awaiting teacher review</div>
+    <div class="pending-badge">📝 Open response submitted — awaiting teacher review (0, 5, 10, or 15 pts)</div>
     <div class="cat-breakdown" id="cat-breakdown"></div>
     <div style="display:flex;flex-direction:column;gap:12px;max-width:340px;margin:0 auto">
       <a href="/study-guide" target="_blank" class="btn" style="background:var(--blue);border:2px solid var(--purple);color:var(--text);text-decoration:none;display:block;text-align:center;padding:14px;font-weight:700;border-radius:var(--radius)">📖 View Updated Study Guide</a>
@@ -401,11 +401,10 @@
     mcScore: 0,
     readingMcScore: 0,
     catScores: {
-      'Fiesta Fatal': { c: 0, t: 0 },  // mapped from 'Fiesta Fatal — Characters & Events'
-      'Preterite':    { c: 0, t: 0 },  // mapped from 'Preterite Conjugation'
-      'Imperfect':    { c: 0, t: 0 },  // mapped from 'Imperfect Conjugation'
-      'Vocabulary':   { c: 0, t: 0 },  // mapped from 'Vocabulary'
-      'Reading':      { c: 0, t: 0 },  // mapped from 'READING'
+      'Fiesta Fatal': { c: 0, t: 0 },  // Section 1 — 20 pts
+      'Conjugation':  { c: 0, t: 0 },  // Section 2 — 20 pts (preterite + imperfect combined)
+      'Vocabulary':   { c: 0, t: 0 },  // Section 3 — 10 pts
+      'Reading':      { c: 0, t: 0 },  // Section 4 reading MC (not separately weighted)
     },
     timerInterval: null,
     startTime: null,
@@ -448,11 +447,12 @@
     return Date.now() - state.startTime;
   }
 
-  // These must match the actual section strings in questions.js
+  // Maps question section strings → catScores keys
+  // Preterite and Imperfect both roll up into 'Conjugation' (Section 2)
   const SECTION_LABELS = {
     'Fiesta Fatal — Characters & Events': 'Fiesta Fatal',
-    'Preterite Conjugation':              'Preterite',
-    'Imperfect Conjugation':              'Imperfect',
+    'Preterite Conjugation':              'Conjugation',
+    'Imperfect Conjugation':              'Conjugation',
     'Vocabulary':                         'Vocabulary',
     'READING':                            'Reading',
   };
@@ -499,9 +499,9 @@
   function buildMcScreen() {
     const container = document.getElementById('mc-content');
     const sections = [
-      { label: 'Section 1', title: 'Fiesta Fatal — Events & Characters', keys: ['Fiesta Fatal — Characters & Events'] },
-      { label: 'Section 2', title: 'Verb Conjugation — Preterite & Imperfect', keys: ['Preterite Conjugation', 'Imperfect Conjugation'] },
-      { label: 'Section 3', title: 'Vocabulary', keys: ['Vocabulary'] },
+      { label: 'Section 1 — 20 pts', title: 'Fiesta Fatal — Events & Characters  (15 questions)', keys: ['Fiesta Fatal — Characters & Events'] },
+      { label: 'Section 2 — 20 pts', title: 'Conjugation — Preterite & Imperfect  (15 questions)', keys: ['Preterite Conjugation', 'Imperfect Conjugation'] },
+      { label: 'Section 3 — 10 pts', title: 'Vocabulary  (15 questions)', keys: ['Vocabulary'] },
     ];
 
     // Group questions by section
@@ -624,7 +624,7 @@
   // ── Reading section ─────────────────────────────────────────────────────────
   function goToReading() {
     const container = document.getElementById('reading-content');
-    let html = `<div class="section-banner"><div class="sec-label">Section 4A</div><h2>Reading Comprehension</h2></div>`;
+    let html = `<div class="section-banner"><div class="sec-label">Section 4</div><h2>Reading Comprehension</h2></div>`;
     html += `<div class="passage-box">${escapeHtml(state.readingPassage)}</div>`;
     state.readingMcQuestions.forEach((q, i) => {
       html += buildQuestionCard(q, i, 'reading');
@@ -686,29 +686,78 @@
   }
 
   // ── Results screen ──────────────────────────────────────────────────────────
+  // Point weights per section (out of 50 MC points total)
+  const MC_WEIGHTS = { 'Fiesta Fatal': 20, 'Conjugation': 20, 'Vocabulary': 10 };
+  const MC_TOTAL_PTS = 50;   // 20 + 20 + 10
+  const OPEN_TOTAL_PTS = 15;
+  const GRAND_TOTAL_PTS = MC_TOTAL_PTS + OPEN_TOTAL_PTS; // 65
+
   function showResultsScreen(score, total, cats) {
-    const pct = total > 0 ? Math.round((score / total) * 100) : 0;
-    document.getElementById('score-pct-display').textContent = pct + '%';
+    // Compute weighted MC points earned
+    let mcPtsEarned = 0;
+    Object.entries(MC_WEIGHTS).forEach(([name, weight]) => {
+      const v = cats[name];
+      if (v && v.t > 0) mcPtsEarned += (v.c / v.t) * weight;
+    });
+    mcPtsEarned = Math.round(mcPtsEarned * 10) / 10;  // 1 decimal
+
+    const mcPct = Math.round(mcPtsEarned / MC_TOTAL_PTS * 100);
+    document.getElementById('score-pct-display').textContent = mcPct + '%';
 
     let heading = 'Great effort!';
-    if (pct >= 90) heading = '🏆 Excellent work!';
-    else if (pct >= 75) heading = '⭐ Good job!';
-    else if (pct >= 60) heading = '📚 Keep practicing!';
+    if (mcPct >= 90) heading = '🏆 Excellent work!';
+    else if (mcPct >= 75) heading = '⭐ Good job!';
+    else if (mcPct >= 60) heading = '📚 Keep practicing!';
     else heading = '💪 Study harder — you\'ve got this!';
     document.getElementById('score-heading').textContent = heading;
     document.getElementById('score-sub').textContent =
-      `${score} / ${total} multiple choice correct (${pct}%) · Written response pending review`;
+      `MC Score: ${mcPtsEarned} / ${MC_TOTAL_PTS} pts · Open Response (${OPEN_TOTAL_PTS} pts) pending teacher review · Total: __/${GRAND_TOTAL_PTS}`;
 
-    // Category breakdown
-    let catHtml = '<h3>Performance by Category</h3>';
-    Object.entries(cats).forEach(([name, v]) => {
+    // Weighted category breakdown
+    let catHtml = '<h3>Score Breakdown</h3>';
+    const SECTION_DISPLAY = [
+      { key: 'Fiesta Fatal', label: '🎭 Fiesta Fatal',  weight: 20 },
+      { key: 'Conjugation',  label: '⚔️ Conjugation',   weight: 20 },
+      { key: 'Vocabulary',   label: '📖 Vocabulary',    weight: 10 },
+    ];
+    let totalMcPtsDisplay = 0;
+    SECTION_DISPLAY.forEach(({ key, label, weight }) => {
+      const v = cats[key] || { c: 0, t: 0 };
       const p = v.t > 0 ? Math.round((v.c / v.t) * 100) : 0;
+      const pts = v.t > 0 ? Math.round((v.c / v.t) * weight * 10) / 10 : 0;
+      totalMcPtsDisplay += pts;
       catHtml += `<div class="cat-row">
-        <div class="cat-name">${name}</div>
+        <div class="cat-name">${label}</div>
         <div class="cat-bar-outer"><div class="cat-bar-inner" style="width:${p}%"></div></div>
-        <div class="cat-score">${v.c}/${v.t}</div>
+        <div class="cat-score" style="width:90px">${v.c}/${v.t} = <b style="color:var(--green)">${pts}/${weight}</b></div>
       </div>`;
     });
+    // Reading MC row (informational, not weighted)
+    const rdg = cats['Reading'];
+    if (rdg && rdg.t > 0) {
+      const rp = Math.round((rdg.c / rdg.t) * 100);
+      catHtml += `<div class="cat-row" style="opacity:0.7">
+        <div class="cat-name">📄 Reading MC</div>
+        <div class="cat-bar-outer"><div class="cat-bar-inner" style="width:${rp}%"></div></div>
+        <div class="cat-score" style="width:90px">${rdg.c}/${rdg.t}</div>
+      </div>`;
+    }
+    // Totals row
+    catHtml += `<div class="cat-row" style="border-top:1px solid var(--border);margin-top:10px;padding-top:10px;font-weight:700">
+      <div class="cat-name">MC Total</div>
+      <div class="cat-bar-outer"></div>
+      <div class="cat-score" style="width:90px;color:var(--green)">${Math.round(totalMcPtsDisplay*10)/10} / ${MC_TOTAL_PTS} pts</div>
+    </div>`;
+    catHtml += `<div class="cat-row" style="opacity:0.6">
+      <div class="cat-name">Open Response</div>
+      <div class="cat-bar-outer"></div>
+      <div class="cat-score" style="width:90px">? / ${OPEN_TOTAL_PTS} pts</div>
+    </div>`;
+    catHtml += `<div class="cat-row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;font-weight:700;font-size:1rem">
+      <div class="cat-name" style="color:var(--yellow)">Grand Total</div>
+      <div class="cat-bar-outer"></div>
+      <div class="cat-score" style="width:90px;color:var(--yellow)">__ / ${GRAND_TOTAL_PTS}</div>
+    </div>`;
     document.getElementById('cat-breakdown').innerHTML = catHtml;
 
     // Update progress to 100%

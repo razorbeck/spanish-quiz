@@ -316,7 +316,7 @@ function buildHTML(perf, practicePools, showAll, sectionOrder) {
 
     /* ── Grammar tables ── */
     .gram-tables { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 16px; }
-    .gram-table-wrap { background: var(--card); border: 1px solid var(--border2); border-radius: var(--radius); overflow: hidden; }
+    .gram-table-wrap { background: var(--card); border: 1px solid var(--border2); border-radius: var(--radius); overflow-x: auto; }
     .gram-table-title { padding: 10px 16px; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); border-bottom: 1px solid var(--border); font-weight: 700; }
     .gram-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
     .gram-table th { padding: 8px 14px; text-align: left; color: var(--muted); font-size: 0.72rem; text-transform: uppercase; border-bottom: 1px solid var(--border); }
@@ -458,7 +458,7 @@ function buildHTML(perf, practicePools, showAll, sectionOrder) {
     return '<div class="page-section" id="sec-ff">'
       + '<div class="sec-label">Section 1</div>'
       + '<div class="sec-title">🎭 Fiesta Fatal' + (isWeak ? ' <span class="tag tag-red">Needs Work</span>' : ' <span class="tag tag-green">Review</span>') + '</div>'
-      + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:20px">Character and event questions account for <b>10/30</b> of the MC score. Know these cold.</p>'
+      + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:20px">Character and event questions account for <b>20 of the 50 MC points</b> (15 questions). Know these cold.</p>'
       + buildFocusBlock('Fiesta Fatal — Characters & Events')
       + '<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;font-weight:700">Character Intel</div>'
       + '<div class="char-grid">' + charCards + '</div>'
@@ -539,11 +539,12 @@ function buildHTML(perf, practicePools, showAll, sectionOrder) {
     const practiceCount = pqs.length;
 
     return '<div class="page-section" id="sec-pret">'
-      + '<div class="sec-label">Section 2a</div>'
+      + '<div class="sec-label">Section 2 — Conjugation</div>'
       + '<div class="sec-title">⚔️ Preterite Conjugation' + (isWeak ? ' <span class="tag tag-red">Needs Work</span>' : ' <span class="tag tag-green">Review</span>') + '</div>'
       + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:20px">Used for actions that were completed at a specific moment in the past. "I did", "he went", "they arrived."</p>'
       + buildFocusBlock('Preterite Conjugation')
-      + '<div class="gram-tables">' + regularTable + irregTable + '</div>'
+      + '<div class="gram-tables" style="grid-template-columns:1fr">' + regularTable + '</div>'
+      + '<div style="margin-top:16px">' + irregTable + '</div>'
       + '<div class="rule-grid" style="margin-top:20px">' + ruleBoxes + '</div>'
       + buildFillin(fillins, 'pret')
       + buildMCPractice(pqs, 'pret', practiceCount)

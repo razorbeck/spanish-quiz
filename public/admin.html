@@ -378,7 +378,7 @@
       const pctColor = pct === null ? '' : pct >= 75 ? 'var(--green)' : pct >= 60 ? 'var(--yellow)' : 'var(--red)';
       const date = s.started_at ? new Date(s.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
       const timeStr = s.time_ms ? formatTime(s.time_ms) : '—';
-      const openStr = s.open_score !== null && s.open_score !== undefined ? `${s.open_score}/3` : 'Pending';
+      const openStr = s.open_score !== null && s.open_score !== undefined ? `${s.open_score}/15` : 'Pending';
       const statusBadge = !isComplete
         ? '<span class="badge badge-muted">In Progress</span>'
         : s.reviewed
@@ -495,17 +495,17 @@
         ${openHtml}
 
         <div class="rubric-box">
-          <div class="rubric-title">Grading Rubric</div>
-          <div><strong>0 pts</strong> No attempt to answer the question</div>
-          <div><strong>1 pt &nbsp;</strong> Uses a few words to respond / present tense</div>
-          <div><strong>2 pts</strong> Responds in a basic sentence using correct tense based on the question</div>
-          <div><strong>3 pts</strong> Responds in a full sentence in the correct tense based on the question with added details</div>
+          <div class="rubric-title">Grading Rubric — Open Response (0–15 pts)</div>
+          <div><strong>0 pts &nbsp;</strong> No attempt to answer the question</div>
+          <div><strong>5 pts &nbsp;</strong> Basic answer with few words</div>
+          <div><strong>10 pts</strong> Correct answer using correct conjugation and tense</div>
+          <div><strong>15 pts</strong> Correct answer with correct conjugation, tense, and extended details</div>
         </div>
 
         <div class="grade-form">
-          <label>Score (0–3):</label>
+          <label>Score (0, 5, 10, 15):</label>
           <select id="grade-score">
-            ${[0,1,2,3].map(n => `<option value="${n}" ${n == currentOpenScore ? 'selected' : ''}>${n} pt${n !== 1 ? 's' : ''}</option>`).join('')}
+            ${[0,5,10,15].map(n => `<option value="${n}" ${n == currentOpenScore ? 'selected' : ''}>${n} pts</option>`).join('')}
           </select>
           <label>Notes:</label>
           <input type="text" id="grade-notes" placeholder="Optional feedback…" value="${escH(currentNotes)}" />
