@@ -98,8 +98,8 @@ router.post('/grade/:id', requireAuth, async (req, res) => {
   try {
     const { score, notes } = req.body;
     const s = parseInt(score, 10);
-    if (isNaN(s) || ![0, 5, 10, 15].includes(s)) {
-      return res.status(400).json({ error: 'Score must be 0, 5, 10, or 15' });
+    if (isNaN(s) || s < 0 || s > 3) {
+      return res.status(400).json({ error: 'Score must be 0-3' });
     }
     await db.gradeOpenResponse(req.params.id, s, (notes || '').slice(0, 1000));
     res.json({ ok: true });
@@ -177,28 +177,6 @@ router.get('/study-guide', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('admin/study-guide error:', err);
     res.status(500).send('<p>Error generating study guide: ' + err.message + '</p>');
-  }
-});
-
-// ── GET /api/admin/partials/count ────────────────────────────────────────────
-router.get('/partials/count', requireAuth, async (req, res) => {
-  try {
-    const count = await db.countPartialSessions();
-    res.json({ count });
-  } catch (err) {
-    console.error('admin/partials/count error:', err);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// ── DELETE /api/admin/partials ────────────────────────────────────────────────
-router.delete('/partials', requireAuth, async (req, res) => {
-  try {
-    const count = await db.deletePartialSessions();
-    res.json({ ok: true, count });
-  } catch (err) {
-    console.error('admin/partials delete error:', err);
-    res.status(500).json({ error: 'Server error' });
   }
 });
 

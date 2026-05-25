@@ -556,87 +556,101 @@ const IMPERFECT = [
 
 // ════════════════════════════════════════════════════════════
 //  SECTION 3 — VOCABULARY  (20 questions)
+//
+//  Design rules:
+//   • Answer options are English-only — no Spanish words alongside them
+//   • False cognate traps included where natural (see v03/v05/v15/v19)
+//   • Distractors stay in the same semantic category as the correct answer
+//   • Correct-answer position distributed evenly (5 per slot: 0/1/2/3)
 // ════════════════════════════════════════════════════════════
 const VOCABULARY = [
+
+  // ── Adjectives ──────────────────────────────────────────────────────────
   q('v01', S.VOC, "¿Qué significa 'peligroso'?",
-    ["Funny / gracioso","Dangerous / peligroso","Humble / humilde","Honest / honesto"], 1,
+    ["Honest","Dangerous","Humble","Funny"], 1,
     "peligroso = dangerous. Edgar era violento y peligroso."),
 
-  q('v02', S.VOC, "¿Qué significa 'huir'?",
-    ["To celebrate","To hide something","To flee / run away","To fight back"], 2,
-    "huir = to flee. Jorge huía del cártel con su hija."),
-
   q('v03', S.VOC, "¿Qué significa 'comprensiva'?",
-    ["Dangerous","Understanding / compassionate","Nervous","Humble"], 1,
-    "comprensiva = understanding. Mónica era comprensiva."),
-
-  q('v04', S.VOC, "¿Qué significa 'escaleras'?",
-    ["Windows","Stairs","Walls","Doors"], 1,
-    "escaleras = stairs. Jorge tenía escaleras secretas debajo del sofá."),
+    // FALSE COGNATE TRAP: 'comprehensive' ≠ comprensiva
+    ["Understanding","Comprehensive","Competitive","Nervous"], 0,
+    "comprensiva = understanding/compassionate. Mónica era muy comprensiva. (NOT 'comprehensive'!)"),
 
   q('v05', S.VOC, "¿Qué significa 'simpático/a'?",
-    ["Dangerous","Ugly / feo","Nice / friendly","Boring"], 2,
-    "simpático/a = nice, friendly. Julieta era muy simpática."),
+    // FALSE COGNATE TRAP: 'sympathetic' ≠ simpático
+    ["Boring","Sympathetic","Dangerous","Nice"], 3,
+    "simpático/a = nice, friendly. Julieta era muy simpática. (NOT 'sympathetic'!)"),
 
   q('v06', S.VOC, "¿Qué significa 'humilde'?",
-    ["Rich / rico","Elegant","Humble / modest","Dangerous"], 2,
+    ["Proud","Humble","Rich","Violent"], 1,
     "humilde = humble, modest. Vanesa llevaba ropa humilde."),
 
-  q('v07', S.VOC, "¿Qué significa 'chocó' (pasado de 'chocar')?",
-    ["Celebrated","Ran away","Crashed / collided","Worked hard"], 2,
-    "chocó = he/she crashed. El taxista no miró la calle y chocó con otro coche."),
-
-  q('v08', S.VOC, "¿Qué significa 'el puesto'?",
-    ["The job title / rank","The apartment","The market stall","The car"], 2,
-    "el puesto = market stall. Vanesa trabajaba en un puesto con su madre."),
-
-  q('v09', S.VOC, "¿Qué significa 'eliminar'?",
-    ["To celebrate","To dance","To eliminate / get rid of","To find"], 2,
-    "eliminar = to eliminate. El cártel quería eliminar a Jorge y su familia."),
-
-  q('v10', S.VOC, "¿Qué significa 'la quinceañera'?",
-    ["A Christmas celebration","A girl's 15th birthday party","A Spanish word for party","A graduation ceremony"], 1,
-    "la quinceañera = a girl's 15th birthday celebration, very important in Latin culture."),
-
-  q('v11', S.VOC, "¿Qué significa 'el cártel'?",
-    ["The market stall","The police department","The cartel (criminal organization)","The apartment building"], 2,
-    "el cártel = the cartel (criminal drug organization). El cártel quería eliminar a Jorge."),
-
-  q('v12', S.VOC, "¿Qué significa 'adorar'?",
-    ["To hate","To fear","To adore / love deeply","To ignore"], 2,
-    "adorar = to adore/love deeply. Julieta adoraba a su papá."),
-
-  q('v13', S.VOC, "¿Qué significa 'respetar'?",
-    ["To love","To respect","To hate","To ignore"], 1,
-    "respetar = to respect. El Sr. Sandoval no respetaba a su hija."),
-
-  q('v14', S.VOC, "¿Qué significa 'escapar'?",
-    ["To celebrate","To work","To escape","To sleep"], 2,
-    "escapar = to escape. Jorge y Julieta escaparon del cártel."),
-
   q('v15', S.VOC, "¿Qué significa 'gracioso/a'?",
-    ["Scary","Funny / entertaining","Humble","Popular"], 1,
-    "gracioso/a = funny, entertaining. Era muy gracioso de niño."),
+    // FALSE COGNATE TRAP: 'gracious' ≠ gracioso
+    ["Gracious","Funny","Serious","Popular"], 1,
+    "gracioso/a = funny, entertaining. Era muy gracioso de niño. (NOT 'gracious'!)"),
 
   q('v16', S.VOC, "¿Qué significa 'nervioso/a'?",
-    ["Dangerous","Nervous","Happy","Humble"], 1,
+    ["Nervous","Angry","Brave","Careless"], 0,
     "nervioso/a = nervous. La señora del puesto estaba nerviosa."),
 
   q('v17', S.VOC, "¿Qué significa 'honesto/a'?",
-    ["Funny","Dangerous","Honest","Humble"], 2,
+    ["Humble","Hardworking","Popular","Honest"], 3,
     "honesto/a = honest. Riky no era honesto sobre su identidad."),
 
+  q('v20', S.VOC, "¿Qué significa 'secreto/a'?",
+    ["Secret","Obvious","Important","Dangerous"], 0,
+    "secreto/a = secret. Jorge tenía escaleras secretas debajo del sofá."),
+
+  // ── Nouns ────────────────────────────────────────────────────────────────
+  q('v04', S.VOC, "¿Qué significa 'escaleras'?",
+    ["Windows","Doors","Stairs","Walls"], 2,
+    "escaleras = stairs. Jorge tenía escaleras secretas debajo del sofá."),
+
+  q('v08', S.VOC, "¿Qué significa 'el puesto'?",
+    ["The apartment","The position","The market stall","The restaurant"], 2,
+    "el puesto = market stall. Vanesa trabajaba en un puesto con su madre."),
+
+  q('v10', S.VOC, "¿Qué significa 'la quinceañera'?",
+    ["A wedding ceremony","A girl's 15th birthday party","A New Year's celebration","A graduation ceremony"], 1,
+    "la quinceañera = a girl's 15th birthday celebration — very important in Latin culture."),
+
+  q('v11', S.VOC, "¿Qué significa 'el cártel'?",
+    ["A criminal organization","The police force","The local government","The neighborhood watch"], 0,
+    "el cártel = the cartel (organized criminal group). El cártel quería eliminar a Jorge y su familia."),
+
   q('v18', S.VOC, "¿Qué significa 'el mercado'?",
-    ["The restaurant","The apartment","The market","The school"], 2,
-    "el mercado = the market (place where goods are sold)."),
+    ["The school","The market","The restaurant","The apartment"], 1,
+    "el mercado = the market (place where goods are sold publicly)."),
 
   q('v19', S.VOC, "¿Qué significa 'el efectivo'?",
-    ["The bank","Cash / physical money","The safe","The cartel's money"], 1,
-    "el efectivo = cash. Jorge no tenía su dinero en el banco — lo guardaba en efectivo."),
+    // FALSE COGNATE TRAP: 'the effect' ≠ el efectivo
+    ["The credit card","The bank account","Cash","The effect"], 2,
+    "el efectivo = cash. Jorge no tenía su dinero en el banco — lo guardaba en efectivo. (NOT 'the effect'!)"),
 
-  q('v20', S.VOC, "¿Qué significa 'secreto/a'?",
-    ["Dangerous","Visible / obvious","Secret / hidden","Important"], 2,
-    "secreto/a = secret. Jorge tenía escaleras secretas debajo del sofá."),
+  // ── Verbs ────────────────────────────────────────────────────────────────
+  q('v02', S.VOC, "¿Qué significa 'huir'?",
+    ["To argue","To hide","To celebrate","To flee"], 3,
+    "huir = to flee. Jorge tuvo que huir del cártel con su hija."),
+
+  q('v07', S.VOC, "¿Qué significa 'chocó' (pasado de 'chocar')?",
+    ["Crashed","Escaped","Celebrated","Worked"], 0,
+    "chocó = he/she crashed. El taxista no miró la calle y chocó con otro coche."),
+
+  q('v09', S.VOC, "¿Qué significa 'eliminar'?",
+    ["To search for","To protect","To discover","To eliminate"], 3,
+    "eliminar = to eliminate. El cártel quería eliminar a Jorge y a toda su familia."),
+
+  q('v12', S.VOC, "¿Qué significa 'adorar'?",
+    ["To ignore","To fear","To respect","To adore"], 3,
+    "adorar = to adore, to love deeply. Julieta adoraba a su papá Jorge."),
+
+  q('v13', S.VOC, "¿Qué significa 'respetar'?",
+    ["To ignore","To adore","To respect","To fear"], 2,
+    "respetar = to respect. El Sr. Sandoval no respetaba a su hija."),
+
+  q('v14', S.VOC, "¿Qué significa 'escapar'?",
+    ["To hide","To escape","To fight","To survive"], 1,
+    "escapar = to escape. Jorge y Julieta lograron escapar del cártel."),
 ];
 
 // ════════════════════════════════════════════════════════════

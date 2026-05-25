@@ -167,26 +167,6 @@ async function deleteSession(id) {
   await p.query('DELETE FROM sessions WHERE id = $1', [id]);
 }
 
-async function countPartialSessions() {
-  const r = await getPool().query(
-    `SELECT COUNT(*) AS n FROM sessions WHERE completed_at IS NULL`
-  );
-  return parseInt(r.rows[0].n, 10);
-}
-
-async function deletePartialSessions() {
-  const p = getPool();
-  // Remove logs for partial sessions first (FK constraint)
-  await p.query(
-    `DELETE FROM question_log WHERE session_id IN
-       (SELECT id FROM sessions WHERE completed_at IS NULL)`
-  );
-  const r = await p.query(
-    `DELETE FROM sessions WHERE completed_at IS NULL`
-  );
-  return r.rowCount;
-}
-
 async function getStats() {
   const p = getPool();
   const [totRes, unrevRes, rowsRes] = await Promise.all([
@@ -232,5 +212,4 @@ module.exports = {
   initDb, createSession, getSession, completeSession, logAnswer,
   getAllSessions, getSessionDetail, gradeOpenResponse, resetAllOpenScores,
   getAllLogsAggregated, deleteSession, getStats,
-  countPartialSessions, deletePartialSessions,
 };
