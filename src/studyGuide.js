@@ -45,29 +45,41 @@ function analyzePerformance(logs, sessions) {
     if (row.is_correct) sMap[s].correct++;
   });
 
+  // catScores sorted weakest-first so we can build a priority order
   const catScores = Object.entries(sMap).map(([name, v]) => ({
     name, correct: v.correct, total: v.total,
     pct: v.total > 0 ? Math.round(v.correct / v.total * 100) : 0,
   })).sort((a, b) => a.pct - b.pct);
 
-  // Questions answered wrong more than half the time
+  // All questions missed > 40% of the time, sorted worst-first, capped at 25
   const weakQuestions = Object.values(qMap)
     .filter(q => q.total > 0 && (q.correct / q.total) < 0.6)
     .sort((a, b) => (a.correct / a.total) - (b.correct / b.total))
-    .slice(0, 20);
+    .slice(0, 25);
 
-  const weakSections = new Set(catScores.filter(c => c.pct < 75).map(c => c.name));
+  // Weak sections = below 80% (raised from 75 to catch plateau range)
+  const weakSections = new Set(catScores.filter(c => c.pct < 80).map(c => c.name));
 
-  // Overall
+  // Overall stats
   const totalAttempts = sessions.length;
-  const latestScore = sessions.length > 0 && sessions[0].mc_total > 0
-    ? Math.round(sessions[0].mc_score / sessions[0].mc_total * 100) : 0;
-  const bestScore = sessions.length > 0
-    ? Math.max(...sessions.map(s => s.mc_total > 0 ? Math.round(s.mc_score / s.mc_total * 100) : 0)) : 0;
-  const avgScore = sessions.length > 0
-    ? Math.round(sessions.reduce((sum, s) => sum + (s.mc_total > 0 ? s.mc_score / s.mc_total * 100 : 0), 0) / sessions.length) : 0;
+  const scoredSessions = sessions.filter(s => s.mc_total > 0);
+  const latestScore = scoredSessions.length > 0
+    ? Math.round(scoredSessions[0].mc_score / scoredSessions[0].mc_total * 100) : 0;
+  const bestScore = scoredSessions.length > 0
+    ? Math.max(...scoredSessions.map(s => Math.round(s.mc_score / s.mc_total * 100))) : 0;
+  const avgScore = scoredSessions.length > 0
+    ? Math.round(scoredSessions.reduce((sum, s) => sum + (s.mc_score / s.mc_total * 100), 0) / scoredSessions.length) : 0;
 
-  return { catScores, weakSections, weakQuestions, totalAttempts, latestScore, bestScore, avgScore };
+  // Score history — ordered newest-first (sessions already ordered by completed_at DESC)
+  const scoreHistory = scoredSessions.slice(0, 8).map(s => Math.round(s.mc_score / s.mc_total * 100));
+
+  // Plateau detection: last 3 scores within 8 points of each other, stuck below 90%
+  const recent = scoreHistory.slice(0, 3);
+  const isPlateaued = recent.length >= 3
+    && (Math.max(...recent) - Math.min(...recent)) <= 8
+    && Math.max(...recent) < 90;
+
+  return { catScores, weakSections, weakQuestions, totalAttempts, latestScore, bestScore, avgScore, scoreHistory, isPlateaued };
 }
 
 /* ── Static study content (character intel, grammar rules) ───────────────── */
@@ -141,17 +153,35 @@ function generateStudyGuide({ logs, sessions }) {
 
   const perf = analyzePerformance(logs, sessions);
 
-  // Determine which sections to show (weak first, but always show all if nothing is weak)
-  const sectionOrder = ['Fiesta Fatal — Characters & Events','Preterite Conjugation','Imperfect Conjugation','Vocabulary'];
+  // Build section order from weakest → strongest based on actual data
+  const FALLBACK_ORDER = ['Fiesta Fatal — Characters & Events','Preterite Conjugation','Imperfect Conjugation','Vocabulary'];
+  const sectionOrder = perf.catScores.length
+    ? perf.catScores.map(c => c.name)  // catScores already sorted weakest-first
+    : FALLBACK_ORDER;
+  // Ensure all 4 sections appear even if some have no data yet
+  FALLBACK_ORDER.forEach(s => { if (!sectionOrder.includes(s)) sectionOrder.push(s); });
+
   const showAll = perf.weakSections.size === 0;
 
-  // Sample practice questions avoiding ones the student repeatedly gets wrong (to keep fresh)
-  const practicePools = {
-    'Fiesta Fatal — Characters & Events': sample(FIESTA_FATAL, 6).map(prepQ),
-    'Preterite Conjugation':              sample(PRETERITE,    6).map(prepQ),
-    'Imperfect Conjugation':              sample(IMPERFECT,    6).map(prepQ),
-    'Vocabulary':                         sample(VOCABULARY,   6).map(prepQ),
+  // Variable practice pool sizes: more drills for weak sections
+  const SECTION_BANKS = {
+    'Fiesta Fatal — Characters & Events': FIESTA_FATAL,
+    'Preterite Conjugation':              PRETERITE,
+    'Imperfect Conjugation':              IMPERFECT,
+    'Vocabulary':                         VOCABULARY,
   };
+  function poolSize(sectionName) {
+    const cat = perf.catScores.find(c => c.name === sectionName);
+    if (!cat || cat.total === 0) return 6;
+    if (cat.pct < 65)  return 12; // seriously weak — max drills
+    if (cat.pct < 80)  return 9;  // needs work — extra drills
+    if (cat.pct < 90)  return 6;  // decent — standard
+    return 4;                      // strong — keep sharp, minimal
+  }
+  const practicePools = {};
+  Object.entries(SECTION_BANKS).forEach(([name, bank]) => {
+    practicePools[name] = sample(bank, Math.min(poolSize(name), bank.length)).map(prepQ);
+  });
 
   return buildHTML(perf, practicePools, showAll, sectionOrder);
 }
@@ -385,6 +415,26 @@ function buildHTML(perf, practicePools, showAll, sectionOrder) {
     }
   `;
 
+  /* ── Shared: "You Keep Missing These" focus block for a section ── */
+  function buildFocusBlock(sectionName) {
+    const missed = weakBySection[sectionName];
+    if (!missed || !missed.length) return '';
+    return '<div style="background:rgba(255,58,92,0.07);border:1.5px solid rgba(255,58,92,0.4);border-radius:var(--radius);padding:16px 20px;margin-bottom:24px">'
+      + '<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--red);font-weight:800;margin-bottom:12px">🎯 You Keep Missing These — Study First</div>'
+      + '<ul class="weak-list" style="margin-top:0">'
+      + missed.map(q => {
+          const pct = q.total > 0 ? Math.round(q.correct / q.total * 100) : 0;
+          return '<li>'
+            + esc(q.question)
+            + '<span class="wl-pct">' + pct + '%</span>'
+            + '<span class="wl-ans">✓ ' + esc(q.correct_ans) + '</span>'
+            + (q.explanation ? '<span style="color:var(--muted);font-size:0.73rem;display:block;margin-top:2px">' + esc(q.explanation) + '</span>' : '')
+            + '</li>';
+        }).join('')
+      + '</ul>'
+      + '</div>';
+  }
+
   /* ── Fiesta Fatal HTML ── */
   function buildFF(isWeak) {
     const charCards = CHARACTERS.map(c =>
@@ -403,16 +453,18 @@ function buildHTML(perf, practicePools, showAll, sectionOrder) {
 
     const events = KEY_EVENTS.map(e => '<li>' + esc(e) + '</li>').join('');
     const pqs = practicePools['Fiesta Fatal — Characters & Events'];
+    const practiceCount = pqs.length;
 
     return '<div class="page-section" id="sec-ff">'
       + '<div class="sec-label">Section 1</div>'
       + '<div class="sec-title">🎭 Fiesta Fatal' + (isWeak ? ' <span class="tag tag-red">Needs Work</span>' : ' <span class="tag tag-green">Review</span>') + '</div>'
-      + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:20px">Character and event questions account for 10/30 of the MC score. Know these cold.</p>'
+      + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:20px">Character and event questions account for <b>10/30</b> of the MC score. Know these cold.</p>'
+      + buildFocusBlock('Fiesta Fatal — Characters & Events')
       + '<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;font-weight:700">Character Intel</div>'
       + '<div class="char-grid">' + charCards + '</div>'
       + '<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:28px 0 10px;font-weight:700">Key Events — Know These</div>'
       + '<ul class="event-list">' + events + '</ul>'
-      + buildMCPractice(pqs, 'ff')
+      + buildMCPractice(pqs, 'ff', practiceCount)
       + '</div>';
   }
 
@@ -484,15 +536,17 @@ function buildHTML(perf, practicePools, showAll, sectionOrder) {
     ];
 
     const pqs = practicePools['Preterite Conjugation'];
+    const practiceCount = pqs.length;
 
     return '<div class="page-section" id="sec-pret">'
       + '<div class="sec-label">Section 2a</div>'
       + '<div class="sec-title">⚔️ Preterite Conjugation' + (isWeak ? ' <span class="tag tag-red">Needs Work</span>' : ' <span class="tag tag-green">Review</span>') + '</div>'
       + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:20px">Used for actions that were completed at a specific moment in the past. "I did", "he went", "they arrived."</p>'
+      + buildFocusBlock('Preterite Conjugation')
       + '<div class="gram-tables">' + regularTable + irregTable + '</div>'
       + '<div class="rule-grid" style="margin-top:20px">' + ruleBoxes + '</div>'
       + buildFillin(fillins, 'pret')
-      + buildMCPractice(pqs, 'pret')
+      + buildMCPractice(pqs, 'pret', practiceCount)
       + '</div>';
   }
 
@@ -545,11 +599,13 @@ function buildHTML(perf, practicePools, showAll, sectionOrder) {
     ];
 
     const pqs = practicePools['Imperfect Conjugation'];
+    const practiceCount = pqs.length;
 
     return '<div class="page-section" id="sec-imp">'
       + '<div class="sec-label">Section 2b</div>'
       + '<div class="sec-title">🌀 Imperfect Conjugation' + (isWeak ? ' <span class="tag tag-red">Needs Work</span>' : ' <span class="tag tag-green">Review</span>') + '</div>'
       + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:20px">Used for ongoing, repeated, or habitual past actions — and for descriptions. "I used to", "was doing", "every day."</p>'
+      + buildFocusBlock('Imperfect Conjugation')
       + '<div class="gram-tables">' + regularTable + irregTable + '</div>'
       + '<div class="rule-grid" style="margin-top:20px">'
       + triggers.map(r => '<div class="rule-box ' + r.cls + '"><div class="rule-title">' + r.title + '</div><div class="rule-note">' + r.content + '</div></div>').join('')
@@ -557,7 +613,7 @@ function buildHTML(perf, practicePools, showAll, sectionOrder) {
       + '<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:24px 0 6px;font-weight:700">Preterite vs. Imperfect — Side by Side</div>'
       + vsHtml
       + buildFillin(fillins, 'imp')
-      + buildMCPractice(pqs, 'imp')
+      + buildMCPractice(pqs, 'imp', practiceCount)
       + '</div>';
   }
 
@@ -581,14 +637,16 @@ function buildHTML(perf, practicePools, showAll, sectionOrder) {
     ).join('');
 
     const pqs = practicePools['Vocabulary'];
+    const practiceCount = pqs.length;
 
     return '<div class="page-section" id="sec-vocab">'
       + '<div class="sec-label">Section 3</div>'
       + '<div class="sec-title">📖 Vocabulary' + (isWeak ? ' <span class="tag tag-red">Needs Work</span>' : ' <span class="tag tag-green">Review</span>') + '</div>'
       + '<p style="color:var(--muted);font-size:0.86rem;margin-bottom:16px">All 20 words from the story. Tap a card to see the definition and example, then mark it.</p>'
+      + buildFocusBlock('Vocabulary')
       + '<div class="vocab-progress" id="vocab-progress">0 / ' + VOCAB_LIST.length + ' marked as known</div>'
       + '<div class="vocab-grid">' + cards + '</div>'
-      + buildMCPractice(pqs, 'vocab')
+      + buildMCPractice(pqs, 'vocab', practiceCount)
       + '</div>';
   }
 
@@ -620,7 +678,10 @@ function buildHTML(perf, practicePools, showAll, sectionOrder) {
       + '<div class="fillin-grid">' + cells + '</div></div>';
   }
 
-  function buildMCPractice(qs, prefix) {
+  function buildMCPractice(qs, prefix, count) {
+    const label = count && count > 6
+      ? 'Practice Questions — ' + count + ' (extra drills for weak section)'
+      : 'Practice Questions';
     const items = qs.map((q, i) =>
       '<div class="mc-item" id="mc_' + prefix + '_' + i + '" data-ans="' + q.ans + '" data-done="0">'
       + '<div class="mc-q">' + esc(q.q) + '</div>'
@@ -632,67 +693,114 @@ function buildHTML(perf, practicePools, showAll, sectionOrder) {
       + '<div class="mc-feedback" id="mc_' + prefix + '_' + i + '_fb"></div>'
       + '</div>'
     ).join('');
-    return '<div class="practice-section"><div class="practice-title">Practice Questions</div>' + items + '</div>';
+    return '<div class="practice-section"><div class="practice-title">' + label + '</div>' + items + '</div>';
   }
 
   /* ── Overview section ── */
-  const { catScores, weakSections, weakQuestions, totalAttempts, latestScore, bestScore, avgScore } = perf;
+  const { catScores, weakSections, weakQuestions, totalAttempts, latestScore, bestScore, avgScore, scoreHistory, isPlateaued } = perf;
   const latestColor = latestScore >= 80 ? 'var(--green)' : latestScore >= 65 ? 'var(--yellow)' : 'var(--red)';
   const bestColor   = bestScore   >= 80 ? 'var(--green)' : bestScore   >= 65 ? 'var(--yellow)' : 'var(--red)';
 
   const barRows = catScores.map(cat => {
-    const c = cat.pct >= 75 ? 'var(--green)' : cat.pct >= 50 ? 'var(--yellow)' : 'var(--red)';
-    const short = { 'Fiesta Fatal — Characters & Events':'Fiesta Fatal','Preterite Conjugation':'Preterite','Imperfect Conjugation':'Imperfect','Vocabulary':'Vocabulary' };
+    const c = cat.pct >= 80 ? 'var(--green)' : cat.pct >= 60 ? 'var(--yellow)' : 'var(--red)';
+    const icons = { 'Fiesta Fatal — Characters & Events':'🎭','Preterite Conjugation':'⚔️','Imperfect Conjugation':'🌀','Vocabulary':'📖' };
+    const short  = { 'Fiesta Fatal — Characters & Events':'Fiesta Fatal','Preterite Conjugation':'Preterite','Imperfect Conjugation':'Imperfect','Vocabulary':'Vocabulary' };
+    const needsWork = cat.pct < 80 ? ' <span style="color:var(--red);font-size:0.7rem;font-weight:700"> ← FOCUS</span>' : '';
     return '<div class="bar-row">'
-      + '<span class="bar-name">' + esc(short[cat.name] || cat.name) + '</span>'
+      + '<span class="bar-name">' + (icons[cat.name]||'') + ' ' + esc(short[cat.name] || cat.name) + needsWork + '</span>'
       + '<div class="bar-track"><div class="bar-fill" style="width:' + cat.pct + '%;background:' + c + '"></div></div>'
       + '<span class="bar-pct" style="color:' + c + '">' + cat.correct + '/' + cat.total + ' (' + cat.pct + '%)</span>'
       + '</div>';
   }).join('');
 
+  // Score history visual — dots colored by performance
+  const historyDots = scoreHistory.map((s, i) => {
+    const col = s >= 80 ? 'var(--green)' : s >= 65 ? 'var(--yellow)' : 'var(--red)';
+    const isLatest = i === 0;
+    return '<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
+      + '<span style="font-size:0.7rem;font-weight:' + (isLatest ? '900' : '400') + ';color:' + col + '">' + s + '%</span>'
+      + '<div style="width:10px;height:10px;border-radius:50%;background:' + col + ';' + (isLatest ? 'box-shadow:0 0 8px ' + col : '') + '"></div>'
+      + '<span style="font-size:0.6rem;color:var(--muted)">' + (i === 0 ? 'latest' : '#' + (i+1) + ' ago') + '</span>'
+      + '</div>';
+  }).join('<div style="flex:1;height:1px;background:var(--border);margin-bottom:14px;align-self:center"></div>');
+
+  const historyHtml = scoreHistory.length > 1
+    ? '<div style="margin-top:20px"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px;font-weight:700">Score History (newest → oldest)</div>'
+      + '<div style="display:flex;align-items:flex-end;gap:6px;flex-wrap:wrap">' + historyDots + '</div>'
+      + '</div>'
+    : '';
+
+  // Plateau warning banner
+  const plateauBanner = isPlateaued
+    ? '<div style="background:rgba(255,196,46,0.1);border:1.5px solid var(--yellow);border-radius:var(--radius);padding:14px 18px;margin-top:20px">'
+      + '<div style="font-size:0.78rem;font-weight:800;color:var(--yellow);margin-bottom:4px">⚠️ You\'re Stuck — Time to Break Through</div>'
+      + '<div style="font-size:0.82rem;color:var(--text);line-height:1.6">Your last ' + Math.min(scoreHistory.length, 3) + ' scores are all within a few points of each other. You\'re not improving because you\'re missing the same questions every time. Scroll down to the sections marked <span style="color:var(--red);font-weight:700">FOCUS</span> — those are the ones holding you back. Don\'t skip them.</div>'
+      + '</div>'
+    : '';
+
+  // Weak questions list — all of them, grouped by section
+  const weakBySection = {};
+  weakQuestions.forEach(q => {
+    const s = q.section || 'Unknown';
+    if (!weakBySection[s]) weakBySection[s] = [];
+    weakBySection[s].push(q);
+  });
+
   const weakListHtml = weakQuestions.length
     ? '<ul class="weak-list">'
-      + weakQuestions.slice(0, 10).map(q => {
+      + weakQuestions.slice(0, 15).map(q => {
           const pct = q.total > 0 ? Math.round(q.correct / q.total * 100) : 0;
           return '<li>'
             + esc(q.question)
             + '<span class="wl-pct">' + pct + '%</span>'
-            + '<span class="wl-ans">Correct answer: ' + esc(q.correct_ans) + '</span>'
+            + '<span class="wl-ans">✓ ' + esc(q.correct_ans) + '</span>'
+            + (q.explanation ? '<span style="color:var(--muted);font-size:0.73rem;display:block;margin-top:2px">' + esc(q.explanation) + '</span>' : '')
             + '</li>';
         }).join('')
       + '</ul>'
-    : '<p style="color:var(--muted);font-size:0.86rem">No consistent problem questions yet — keep taking practice tests.</p>';
+    : '<p style="color:var(--muted);font-size:0.86rem">Keep taking practice tests — problem questions will show up here once patterns emerge.</p>';
 
   const overviewSection = '<div class="page-section" id="sec-overview">'
     + '<div class="sec-label">Overview</div>'
     + '<div class="sec-title">Dylan\'s Performance</div>'
-    + '<div class="stats-row">'
+    + plateauBanner
+    + '<div class="stats-row" style="margin-top:20px">'
     + '<div class="stat-chip"><div class="val">' + totalAttempts + '</div><div class="lbl">Tests Taken</div></div>'
-    + '<div class="stat-chip"><div class="val" style="color:' + latestColor + '">' + latestScore + '%</div><div class="lbl">Latest Score</div></div>'
-    + '<div class="stat-chip"><div class="val" style="color:' + bestColor + '">' + bestScore + '%</div><div class="lbl">Best Score</div></div>'
-    + '<div class="stat-chip"><div class="val">' + avgScore + '%</div><div class="lbl">Avg Score</div></div>'
+    + '<div class="stat-chip"><div class="val" style="color:' + latestColor + '">' + latestScore + '%</div><div class="lbl">Latest</div></div>'
+    + '<div class="stat-chip"><div class="val" style="color:' + bestColor + '">' + bestScore + '%</div><div class="lbl">Best</div></div>'
+    + '<div class="stat-chip"><div class="val">' + avgScore + '%</div><div class="lbl">Avg</div></div>'
     + '</div>'
-    + (catScores.length ? '<div class="score-bars" style="margin-top:28px"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;font-weight:700">Section Scores</div>' + barRows + '</div>' : '')
-    + (weakQuestions.length ? '<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:28px 0 10px;font-weight:700">Questions You Keep Getting Wrong</div>' + weakListHtml : '')
+    + historyHtml
+    + (catScores.length ? '<div class="score-bars" style="margin-top:28px"><div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;font-weight:700">Section Breakdown — Weakest First</div>' + barRows + '</div>' : '')
+    + (weakQuestions.length ? '<div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:28px 0 10px;font-weight:700">🎯 Questions You Keep Getting Wrong (' + weakQuestions.length + ' total)</div>' + weakListHtml : '')
     + '</div>';
 
-  /* ── Nav tabs ── */
-  const navLinks = [
-    ['#sec-overview', 'Overview'],
-    ['#sec-ff',       'Fiesta Fatal'],
-    ['#sec-pret',     'Preterite'],
-    ['#sec-imp',      'Imperfect'],
-    ['#sec-vocab',    'Vocab'],
-    ['/',             'Take Test →'],
-  ].map(([href, label]) =>
-    '<a href="' + href + '"' + (href === '#sec-overview' ? ' class="active"' : '') + '>' + label + '</a>'
-  ).join('');
+  /* ── Nav tabs — ordered by section weakness ── */
+  const SEC_ID    = { 'Fiesta Fatal — Characters & Events':'sec-ff','Preterite Conjugation':'sec-pret','Imperfect Conjugation':'sec-imp','Vocabulary':'sec-vocab' };
+  const SEC_SHORT = { 'Fiesta Fatal — Characters & Events':'Fiesta Fatal','Preterite Conjugation':'Preterite','Imperfect Conjugation':'Imperfect','Vocabulary':'Vocab' };
+  const sectionNavItems = sectionOrder
+    .filter(s => SEC_ID[s])
+    .map(s => {
+      const isW = weakSections.has(s);
+      return ['#' + SEC_ID[s], SEC_SHORT[s] + (isW ? ' 🔴' : '')];
+    });
+  const navLinks = [['#sec-overview','Overview'], ...sectionNavItems, ['/','Take Test →']]
+    .map(([href, label]) =>
+      '<a href="' + href + '"' + (href === '#sec-overview' ? ' class="active"' : '') + '>' + label + '</a>'
+    ).join('');
 
   /* ── Content sections ── */
   const ffWeak   = weakSections.has('Fiesta Fatal — Characters & Events');
   const pretWeak = weakSections.has('Preterite Conjugation');
   const impWeak  = weakSections.has('Imperfect Conjugation');
   const vocWeak  = weakSections.has('Vocabulary');
+
+  const SECTION_BUILDERS = {
+    'Fiesta Fatal — Characters & Events': () => buildFF(ffWeak),
+    'Preterite Conjugation':              () => buildPret(pretWeak),
+    'Imperfect Conjugation':              () => buildImp(impWeak),
+    'Vocabulary':                         () => buildVocab(vocWeak),
+  };
 
   const divider = '<hr class="section-divider">';
 
@@ -776,7 +884,17 @@ window.addEventListener("scroll", function() {
 }, { passive: true });
 `;
 
-  /* ── Assemble final page ── */
+  /* ── Assemble final page — sections in weakness-first order ── */
+  const weakCount = weakSections.size;
+  const headerSub = weakCount > 0
+    ? 'Spanish II · Spring Final · ' + weakCount + ' section' + (weakCount > 1 ? 's' : '') + ' need focus — study those first'
+    : 'Spanish II · Spring Final · Looking solid — keep it sharp';
+
+  const sectionHTML = sectionOrder
+    .filter(s => SECTION_BUILDERS[s])
+    .map(s => SECTION_BUILDERS[s]())
+    .join('\n' + divider + '\n');
+
   return '<!DOCTYPE html>\n<html lang="en">\n<head>'
     + '\n<meta charset="UTF-8" />'
     + '\n<meta name="viewport" content="width=device-width, initial-scale=1.0" />'
@@ -786,17 +904,11 @@ window.addEventListener("scroll", function() {
     + '\n<nav id="top-nav">' + navLinks + '</nav>'
     + '\n<div class="guide-header">'
     + '\n<h1>DYLAN\'S <span>STUDY GUIDE</span></h1>'
-    + '\n<div class="sub">Spanish II · Spring Final · Built from all ' + totalAttempts + ' practice test' + (totalAttempts !== 1 ? 's' : '') + '</div>'
+    + '\n<div class="sub">' + esc(headerSub) + '</div>'
     + '\n</div>'
     + '\n' + overviewSection
     + '\n' + divider
-    + '\n' + buildFF(ffWeak)
-    + '\n' + divider
-    + '\n' + buildPret(pretWeak)
-    + '\n' + divider
-    + '\n' + buildImp(impWeak)
-    + '\n' + divider
-    + '\n' + buildVocab(vocWeak)
+    + '\n' + sectionHTML
     + '\n<script>' + JS + '\n</script>'
     + '\n</body>\n</html>';
 }
