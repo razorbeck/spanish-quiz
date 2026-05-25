@@ -3,7 +3,7 @@ const express  = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db       = require('./db');
 const { FIESTA_FATAL, PRETERITE, IMPERFECT, VOCABULARY } = require('./questions');
-const { getReading } = require('./readings');
+const { getReading, READINGS } = require('./readings');
 
 const router = express.Router();
 
@@ -76,8 +76,9 @@ router.post('/start', async (req, res) => {
   try {
     const studentName = (req.body.studentName || 'Student').trim().slice(0, 60);
     let version = parseInt(req.body.version, 10);
-    if (!version || version < 1 || version > 10) {
-      version = Math.floor(Math.random() * 10) + 1;
+    const maxVersion = READINGS.length;
+    if (!version || version < 1 || version > maxVersion) {
+      version = Math.floor(Math.random() * maxVersion) + 1;
     }
 
     const sessionId = uuidv4();

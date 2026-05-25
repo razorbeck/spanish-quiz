@@ -180,6 +180,28 @@ router.get('/study-guide', requireAuth, async (req, res) => {
   }
 });
 
+// ── GET /api/admin/partials/count ────────────────────────────────────────────
+router.get('/partials/count', requireAuth, async (req, res) => {
+  try {
+    const count = await db.countPartialSessions();
+    res.json({ count });
+  } catch (err) {
+    console.error('admin/partials/count error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// ── DELETE /api/admin/partials ────────────────────────────────────────────────
+router.delete('/partials', requireAuth, async (req, res) => {
+  try {
+    const count = await db.deletePartialSessions();
+    res.json({ ok: true, count });
+  } catch (err) {
+    console.error('admin/partials delete error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // ── GET /api/admin/check ──────────────────────────────────────────────────────
 router.get('/check', (req, res) => {
   res.json({ loggedIn: !!(req.session && req.session.isAdmin) });

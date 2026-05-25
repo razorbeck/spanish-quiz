@@ -309,13 +309,20 @@
   async function loadDashboard() {
     document.getElementById('app-content').innerHTML = '<div class="spinner"></div>';
     try {
-      const [sRes, stRes] = await Promise.all([
+      const [sRes, stRes, pcRes] = await Promise.all([
         fetch('/api/admin/sessions'),
         fetch('/api/admin/stats'),
+        fetch('/api/admin/partials/count'),
       ]);
       sessions = await sRes.json();
       stats    = await stRes.json();
       renderDashboard();
+      // Update partial count badge after render
+      try {
+        const pcData = await pcRes.json();
+        const el = document.getElementById('partial-count');
+        if (el) el.textContent = pcData.count;
+      } catch (_) {}
     } catch (e) {
       document.getElementById('app-content').innerHTML =
         '<p style="color:var(--red);padding:40px">Failed to load data.</p>';
@@ -340,6 +347,7 @@
         <a href="/api/admin/study-guide" target="_blank" class="btn btn-green" style="text-decoration:none">📚 Open Study Guide</a>
         <a href="/api/admin/export.csv" class="btn btn-muted" download>⬇ Export CSV</a>
         <button class="btn btn-red" onclick="regradeAll()" title="Reset all open-response scores so you can re-grade with the new 0–3 rubric">↺ Regrade All Open</button>
+        <button class="btn btn-red" id="delete-partials-btn" onclick="deletePartials()" title="Delete incomplete/abandoned test attempts">🗑️ Delete Partials (<span id="partial-count">?</span>)</button>
         <button class="btn btn-primary" onclick="loadDashboard()">↻ Refresh</button>
       </div>
 
@@ -543,6 +551,20 @@
       } else {
         toast('Reset failed.');
       }
+    } catch { toast('Network error.'); }
+  }
+
+  async function deletePartials() {
+    const countEl = document.getElementById('partial-count');
+    const n = parseInt(countEl ? countEl.textContent : '0', 10) || 0;
+    if (!confirm(`Delete ${n} partial (incomplete) attempt${n !== 1 ? 's' : ''}?\n\nThese are sessions that were started but never submitted. This cannot be undone.`)) return;
+    try {
+      const r = await fetch('/api/admin/partials', { method: 'DELETE' });
+      const d = await r.json();
+      if (r.ok) {
+        toast(`🗑️ Deleted ${d.count} partial attempt${d.count !== 1 ? 's' : ''}`);
+        loadDashboard();
+      } else { toast('Delete failed.'); }
     } catch { toast('Network error.'); }
   }
 
