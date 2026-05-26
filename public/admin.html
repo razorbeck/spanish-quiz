@@ -217,6 +217,57 @@
     .grade-form select:focus, .grade-form input:focus { border-color: var(--accent); }
     .grade-form input[type=text] { flex: 1; min-width: 200px; }
 
+    /* ── Paper test scan panel ──────────────────────────── */
+    #scan-panel {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.7);
+      align-items: flex-start; justify-content: center;
+      padding: 24px 16px; overflow-y: auto;
+    }
+    #scan-panel.open { display: flex; }
+    .scan-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; width: 100%; max-width: 680px; padding: 28px;
+      position: relative;
+    }
+    .scan-close {
+      position: absolute; top: 16px; right: 16px;
+      background: var(--border); border: none; border-radius: 8px;
+      color: var(--text); padding: 6px 12px; cursor: pointer; font-size: 0.85rem;
+    }
+    .scan-field { margin-bottom: 14px; }
+    .scan-field label { display: block; font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .scan-field input[type=text], .scan-field input[type=file] {
+      width: 100%; padding: 10px 14px;
+      background: var(--card); border: 2px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-size: 0.9rem; outline: none;
+    }
+    .scan-field input:focus { border-color: var(--accent); }
+    .grade-result-box {
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 18px; margin-top: 18px; font-size: 0.87rem;
+    }
+    .grade-result-box h3 { margin-bottom: 12px; font-size: 1rem; }
+    .grade-result-score { font-size: 2rem; font-weight: 900; color: var(--accent); }
+    .grade-q-row { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+    .grade-q-row:last-child { border-bottom: none; }
+    .grade-q-row .gq-num { width: 28px; flex-shrink: 0; color: var(--muted); }
+    .grade-q-row .gq-marked { width: 28px; font-weight: bold; }
+    .grade-q-row .gq-correct { width: 28px; color: var(--green); }
+
+    /* ── Print tests table section ── */
+    .paper-section { margin-top: 40px; }
+    .paper-version-select {
+      padding: 8px 12px; background: var(--card); border: 2px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-size: 0.85rem; outline: none;
+    }
+    .paper-version-select:focus { border-color: var(--accent); }
+    .code-chip {
+      display: inline-block; background: rgba(255,211,42,0.2); color: var(--yellow);
+      font-weight: 800; letter-spacing: 2px; padding: 2px 10px; border-radius: 6px;
+      font-size: 0.92rem; font-family: monospace;
+    }
+
     /* ── Spinner ─────────────────────────────────────────── */
     .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 60px auto; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -257,6 +308,37 @@
   <div class="detail-box">
     <button class="detail-close" onclick="closeDetail()">✕ Close</button>
     <div id="detail-content"></div>
+  </div>
+</div>
+
+<!-- ── Scan Grade Panel ────────────────────────────────────────────────── -->
+<div id="scan-panel">
+  <div class="scan-box">
+    <button class="scan-close" onclick="closeScanPanel()">✕ Close</button>
+    <h2 style="margin-bottom:18px">📷 Grade Paper Scan</h2>
+
+    <div class="scan-field">
+      <label>Test Code (from answer sheet)</label>
+      <input type="text" id="scan-code" placeholder="e.g. AB3XYZ" maxlength="6"
+        style="text-transform:uppercase;letter-spacing:3px;font-size:1.1rem;font-weight:bold" />
+    </div>
+    <div class="scan-field">
+      <label>Student Name (optional — override if not on sheet)</label>
+      <input type="text" id="scan-student" placeholder="Student's name" />
+    </div>
+    <div class="scan-field">
+      <label>Upload Answer Sheet Scan (JPG, PNG, or PDF page)</label>
+      <input type="file" id="scan-file" accept="image/jpeg,image/png,image/webp,image/gif" />
+      <p style="font-size:0.75rem;color:var(--muted);margin-top:6px">
+        Scan or photo of <strong>page 5 (the answer sheet)</strong>. Make sure bubbles and open response are clearly visible.
+      </p>
+    </div>
+
+    <button class="btn btn-primary" id="scan-submit-btn" onclick="submitScan()" style="width:100%;margin-top:4px">
+      ✨ Grade with AI
+    </button>
+    <div id="scan-status" style="margin-top:14px;font-size:0.85rem;color:var(--muted);min-height:20px"></div>
+    <div id="scan-result"></div>
   </div>
 </div>
 
@@ -309,13 +391,20 @@
   async function loadDashboard() {
     document.getElementById('app-content').innerHTML = '<div class="spinner"></div>';
     try {
-      const [sRes, stRes] = await Promise.all([
+      const [sRes, stRes, pcRes] = await Promise.all([
         fetch('/api/admin/sessions'),
         fetch('/api/admin/stats'),
+        fetch('/api/admin/partials/count'),
       ]);
       sessions = await sRes.json();
       stats    = await stRes.json();
       renderDashboard();
+      // Update partial count badge after render
+      try {
+        const pcData = await pcRes.json();
+        const el = document.getElementById('partial-count');
+        if (el) el.textContent = pcData.count;
+      } catch (_) {}
     } catch (e) {
       document.getElementById('app-content').innerHTML =
         '<p style="color:var(--red);padding:40px">Failed to load data.</p>';
@@ -340,6 +429,7 @@
         <a href="/api/admin/study-guide" target="_blank" class="btn btn-green" style="text-decoration:none">📚 Open Study Guide</a>
         <a href="/api/admin/export.csv" class="btn btn-muted" download>⬇ Export CSV</a>
         <button class="btn btn-red" onclick="regradeAll()" title="Reset all open-response scores so you can re-grade with the new 0–3 rubric">↺ Regrade All Open</button>
+        <button class="btn btn-red" id="delete-partials-btn" onclick="deletePartials()" title="Delete incomplete/abandoned test attempts">🗑️ Delete Partials (<span id="partial-count">?</span>)</button>
         <button class="btn btn-primary" onclick="loadDashboard()">↻ Refresh</button>
       </div>
 
@@ -370,7 +460,7 @@
       const pctColor = pct === null ? '' : pct >= 75 ? 'var(--green)' : pct >= 60 ? 'var(--yellow)' : 'var(--red)';
       const date = s.started_at ? new Date(s.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
       const timeStr = s.time_ms ? formatTime(s.time_ms) : '—';
-      const openStr = s.open_score !== null && s.open_score !== undefined ? `${s.open_score}/3` : 'Pending';
+      const openStr = s.open_score !== null && s.open_score !== undefined ? `${s.open_score}/15` : 'Pending';
       const statusBadge = !isComplete
         ? '<span class="badge badge-muted">In Progress</span>'
         : s.reviewed
@@ -391,9 +481,252 @@
       </tr>`;
     });
 
-    html += `</tbody></table></div>`;
+    html += `</tbody></table></div>
+
+      <!-- ── Paper Tests section ── -->
+      <div class="paper-section">
+        <div class="toolbar">
+          <h2>🖨️ Paper Tests</h2>
+          <select id="print-version-select" class="paper-version-select">
+            <option value="0">Random version</option>
+            ${Array.from({length: 10}, (_, i) => `<option value="${i+1}">Version ${i+1}</option>`).join('')}
+          </select>
+          <button class="btn btn-green" onclick="generatePrintTest()">🖨️ Generate &amp; Print</button>
+          <button class="btn btn-muted" onclick="loadPaperTests()">↻ Refresh</button>
+          <button class="btn btn-primary" onclick="openScanPanel()">📷 Grade a Scan</button>
+        </div>
+        <div id="paper-tests-table"><div class="spinner" style="width:24px;height:24px;margin:20px auto"></div></div>
+      </div>
+    `;
     document.getElementById('app-content').innerHTML = html;
+    loadPaperTests();
   }
+
+  // ── Paper Tests ──────────────────────────────────────────────────────────
+  let printSessions = [];
+
+  async function generatePrintTest() {
+    const version = parseInt(document.getElementById('print-version-select').value, 10) || 0;
+    try {
+      const btn = event.target;
+      btn.disabled = true; btn.textContent = '⏳ Generating…';
+      const r = await fetch('/api/print/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version }),
+      });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error || 'Failed'); }
+      const html = await r.text();
+      // Open in new tab
+      const blob = new Blob([html], { type: 'text/html' });
+      const url  = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      toast('✅ Test generated — printing in new tab');
+      loadPaperTests();
+    } catch (err) {
+      toast('❌ ' + err.message);
+    } finally {
+      const btn2 = document.querySelector('button[onclick="generatePrintTest()"]');
+      if (btn2) { btn2.disabled = false; btn2.textContent = '🖨️ Generate & Print'; }
+    }
+  }
+
+  async function loadPaperTests() {
+    const wrap = document.getElementById('paper-tests-table');
+    if (!wrap) return;
+    try {
+      const r = await fetch('/api/print/list');
+      printSessions = await r.json();
+      renderPaperTests();
+    } catch {
+      if (wrap) wrap.innerHTML = '<p style="color:var(--muted);padding:12px">Could not load paper tests.</p>';
+    }
+  }
+
+  function renderPaperTests() {
+    const wrap = document.getElementById('paper-tests-table');
+    if (!wrap) return;
+    if (!printSessions.length) {
+      wrap.innerHTML = '<p style="color:var(--muted);padding:12px">No paper tests generated yet.</p>';
+      return;
+    }
+    let html = `<div class="table-wrap"><table>
+      <thead><tr>
+        <th>Code</th><th>Version</th><th>Generated</th><th>Student</th>
+        <th>MC Score</th><th>Open</th><th>Graded</th><th></th>
+      </tr></thead><tbody>`;
+    printSessions.forEach(p => {
+      const date = new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      const gradedDate = p.graded_at ? new Date(p.graded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+      const mcStr  = p.mc_score !== null && p.mc_score !== undefined ? `${p.mc_score}/${p.mc_total}` : '—';
+      const openStr = p.open_score !== null && p.open_score !== undefined ? `${p.open_score}/15` : '—';
+      const statusBadge = p.graded_at
+        ? '<span class="badge badge-green">Graded</span>'
+        : '<span class="badge badge-yellow">Pending</span>';
+      html += `<tr>
+        <td><span class="code-chip">${escH(p.short_code)}</span></td>
+        <td>v${p.version}</td>
+        <td style="color:var(--muted)">${date}</td>
+        <td>${p.student_name ? escH(p.student_name) : '<span style="color:var(--muted)">—</span>'}</td>
+        <td>${mcStr}</td>
+        <td>${openStr}</td>
+        <td>${statusBadge} <span style="color:var(--muted);font-size:0.78rem">${gradedDate}</span></td>
+        <td style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-primary" style="padding:5px 12px;font-size:0.76rem"
+            onclick="openScanPanel('${escH(p.short_code)}')">📷 Grade</button>
+          <button class="btn btn-red" style="padding:5px 10px;font-size:0.76rem"
+            onclick="deletePrintTest('${escH(p.id)}')">🗑</button>
+        </td>
+      </tr>`;
+    });
+    html += '</tbody></table></div>';
+    wrap.innerHTML = html;
+  }
+
+  async function deletePrintTest(id) {
+    if (!confirm('Delete this paper test record? This cannot be undone.')) return;
+    try {
+      const r = await fetch(`/api/print/${id}`, { method: 'DELETE' });
+      if (r.ok) { toast('Deleted.'); loadPaperTests(); }
+      else { toast('Delete failed.'); }
+    } catch { toast('Network error.'); }
+  }
+
+  // ── Scan panel ───────────────────────────────────────────────────────────
+  function openScanPanel(code) {
+    document.getElementById('scan-code').value = code || '';
+    document.getElementById('scan-student').value = '';
+    document.getElementById('scan-file').value = '';
+    document.getElementById('scan-status').textContent = '';
+    document.getElementById('scan-result').innerHTML = '';
+    document.getElementById('scan-submit-btn').disabled = false;
+    document.getElementById('scan-submit-btn').textContent = '✨ Grade with AI';
+    document.getElementById('scan-panel').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeScanPanel() {
+    document.getElementById('scan-panel').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  async function submitScan() {
+    const code    = document.getElementById('scan-code').value.trim().toUpperCase();
+    const student = document.getElementById('scan-student').value.trim();
+    const fileEl  = document.getElementById('scan-file');
+    const file    = fileEl.files[0];
+    const btn     = document.getElementById('scan-submit-btn');
+    const status  = document.getElementById('scan-status');
+
+    if (!code) { status.textContent = '⚠️ Enter the test code first.'; return; }
+    if (!file) { status.textContent = '⚠️ Select an answer sheet image.'; return; }
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Uploading…';
+    status.textContent = 'Converting image…';
+
+    try {
+      // Convert to base64
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      btn.textContent = '🤖 Grading with AI…';
+      status.textContent = 'Sending to Claude Vision — this may take 20–40 seconds…';
+
+      const r = await fetch('/api/print/grade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shortCode:  code,
+          imageData:  base64,
+          mimeType:   file.type,
+          studentName: student,
+        }),
+      });
+
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Grading failed');
+
+      status.textContent = '✅ Grading complete!';
+      showScanResult(data);
+      loadPaperTests();
+    } catch (err) {
+      status.textContent = '❌ ' + err.message;
+      btn.disabled = false;
+      btn.textContent = '✨ Grade with AI';
+    }
+  }
+
+  function showScanResult(data) {
+    const MC_WEIGHTS = { 'Fiesta Fatal': 20, 'Conjugation': 20, 'Vocabulary': 10 };
+    const mcPct = data.mcTotal > 0 ? Math.round((data.mcScore / data.mcTotal) * 100) : 0;
+    const pctColor = mcPct >= 75 ? 'var(--green)' : mcPct >= 60 ? 'var(--yellow)' : 'var(--red)';
+    const openScore = data.openScore !== null && data.openScore !== undefined ? data.openScore : '—';
+    const total = typeof data.openScore === 'number' ? data.mcScore + data.openScore : '—';
+
+    // Detailed per-question breakdown
+    const detail = data.detail || [];
+    let detailHtml = '';
+    const sectionMap = {};
+    detail.forEach(q => {
+      const sec = q.section || 'Unknown';
+      if (!sectionMap[sec]) sectionMap[sec] = [];
+      sectionMap[sec].push(q);
+    });
+    Object.entries(sectionMap).forEach(([sec, qs]) => {
+      const correct = qs.filter(q => q.isCorrect).length;
+      detailHtml += `<div style="font-size:0.8rem;font-weight:bold;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px">${escH(sec)} — ${correct}/${qs.length}</div>`;
+      qs.forEach(q => {
+        const icon = q.isCorrect ? '✅' : '❌';
+        const markedStyle = q.isCorrect ? 'color:var(--green)' : 'color:var(--red)';
+        detailHtml += `<div class="grade-q-row">
+          <div class="gq-num">Q${q.q}</div>
+          <div class="gq-marked" style="${markedStyle}">${escH(q.marked || '?')}</div>
+          ${!q.isCorrect ? `<div style="font-size:0.78rem;color:var(--muted)">(key: <strong style="color:var(--green)">${escH(q.correct)}</strong>)</div>` : ''}
+        </div>`;
+      });
+    });
+
+    document.getElementById('scan-result').innerHTML = `
+      <div class="grade-result-box">
+        <h3>📊 Grading Results — ${escH(data.studentName || 'Unknown Student')}</h3>
+        <div style="display:flex;gap:28px;flex-wrap:wrap;margin-bottom:16px">
+          <div>
+            <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">MC Score</div>
+            <div class="grade-result-score" style="color:${pctColor}">${data.mcScore}/${data.mcTotal}</div>
+            <div style="font-size:0.8rem;color:var(--muted)">${mcPct}%</div>
+          </div>
+          <div>
+            <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Open Response</div>
+            <div class="grade-result-score">${openScore}/15</div>
+          </div>
+          <div>
+            <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Total</div>
+            <div class="grade-result-score">${total}/65</div>
+          </div>
+        </div>
+
+        ${data.openResponse ? `
+        <div style="margin-bottom:10px">
+          <div style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">Student's Open Response</div>
+          <div class="open-response-box">${escH(data.openResponse)}</div>
+          <div class="open-q-box">🤖 AI Feedback: ${escH(data.openEval || '—')}</div>
+        </div>` : ''}
+
+        ${data.issues ? `<div style="background:rgba(255,71,87,0.1);border:1px solid rgba(255,71,87,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:0.82rem;color:var(--red)">⚠️ Scan Issues: ${escH(data.issues)}</div>` : ''}
+
+        <details>
+          <summary style="cursor:pointer;font-size:0.82rem;color:var(--muted);margin-bottom:8px">View question-by-question breakdown (${detail.length} questions)</summary>
+          <div style="max-height:300px;overflow-y:auto;margin-top:8px">${detailHtml}</div>
+        </details>
+      </div>
+    `;
+  }
+
 
   // ── Detail panel ──────────────────────────────────────────────────────────
   async function openDetail(id) {
@@ -487,17 +820,17 @@
         ${openHtml}
 
         <div class="rubric-box">
-          <div class="rubric-title">Grading Rubric</div>
-          <div><strong>0 pts</strong> No attempt to answer the question</div>
-          <div><strong>1 pt &nbsp;</strong> Uses a few words to respond / present tense</div>
-          <div><strong>2 pts</strong> Responds in a basic sentence using correct tense based on the question</div>
-          <div><strong>3 pts</strong> Responds in a full sentence in the correct tense based on the question with added details</div>
+          <div class="rubric-title">Grading Rubric — Open Response (0–15 pts)</div>
+          <div><strong>0 pts &nbsp;</strong> No attempt to answer the question</div>
+          <div><strong>5 pts &nbsp;</strong> Basic answer with few words</div>
+          <div><strong>10 pts</strong> Correct answer using correct conjugation and tense</div>
+          <div><strong>15 pts</strong> Correct answer with correct conjugation, tense, and extended details</div>
         </div>
 
         <div class="grade-form">
-          <label>Score (0–3):</label>
+          <label>Score (0, 5, 10, 15):</label>
           <select id="grade-score">
-            ${[0,1,2,3].map(n => `<option value="${n}" ${n == currentOpenScore ? 'selected' : ''}>${n} pt${n !== 1 ? 's' : ''}</option>`).join('')}
+            ${[0,5,10,15].map(n => `<option value="${n}" ${n == currentOpenScore ? 'selected' : ''}>${n} pts</option>`).join('')}
           </select>
           <label>Notes:</label>
           <input type="text" id="grade-notes" placeholder="Optional feedback…" value="${escH(currentNotes)}" />
@@ -543,6 +876,20 @@
       } else {
         toast('Reset failed.');
       }
+    } catch { toast('Network error.'); }
+  }
+
+  async function deletePartials() {
+    const countEl = document.getElementById('partial-count');
+    const n = parseInt(countEl ? countEl.textContent : '0', 10) || 0;
+    if (!confirm(`Delete ${n} partial (incomplete) attempt${n !== 1 ? 's' : ''}?\n\nThese are sessions that were started but never submitted. This cannot be undone.`)) return;
+    try {
+      const r = await fetch('/api/admin/partials', { method: 'DELETE' });
+      const d = await r.json();
+      if (r.ok) {
+        toast(`🗑️ Deleted ${d.count} partial attempt${d.count !== 1 ? 's' : ''}`);
+        loadDashboard();
+      } else { toast('Delete failed.'); }
     } catch { toast('Network error.'); }
   }
 

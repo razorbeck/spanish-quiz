@@ -11,6 +11,7 @@ const db                     = require('./src/db');
 const { generateStudyGuide } = require('./src/studyGuide');
 const quizRoutes             = require('./src/quizRoutes');
 const adminRoutes            = require('./src/adminRoutes');
+const printRoutes            = require('./src/printRoutes');
 
 const app  = express();
 const PORT = process.env.PORT || 8080;
@@ -35,7 +36,7 @@ app.use(helmet({
 app.disable('x-powered-by');
 
 // ── Body + cookies ────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '50kb' }));
+app.use(express.json({ limit: '15mb' }));  // large limit needed for base64 scan uploads
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
@@ -54,6 +55,7 @@ app.use(session({
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 app.use('/api/quiz',  rateLimit({ windowMs: 15 * 60 * 1000, max: 300, standardHeaders: true, legacyHeaders: false }));
 app.use('/api/admin', rateLimit({ windowMs: 15 * 60 * 1000, max: 100, standardHeaders: true, legacyHeaders: false }));
+app.use('/api/print', rateLimit({ windowMs: 15 * 60 * 1000, max: 60,  standardHeaders: true, legacyHeaders: false }));
 
 // ── Static files (NO source maps) ────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, 'public'), {
@@ -66,6 +68,7 @@ app.use(express.static(path.join(__dirname, 'public'), {
 // ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api/quiz',  quizRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/print', printRoutes);
 
 // ── Admin page ────────────────────────────────────────────────────────────────
 app.get('/admin', (req, res) => {

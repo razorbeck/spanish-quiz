@@ -59,6 +59,24 @@ async function initDb() {
       is_correct  INTEGER,
       explanation TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS print_sessions (
+      id              TEXT PRIMARY KEY,
+      short_code      TEXT NOT NULL,
+      version         INTEGER NOT NULL,
+      created_at      TEXT NOT NULL,
+      student_name    TEXT,
+      answers_json    TEXT NOT NULL,
+      reading_passage TEXT,
+      open_question   TEXT,
+      graded_at       TEXT,
+      mc_score        INTEGER,
+      mc_total        INTEGER DEFAULT 48,
+      open_score      INTEGER,
+      open_response   TEXT,
+      grade_detail    TEXT,
+      admin_notes     TEXT
+    );
   `);
 
   console.log('✅  PostgreSQL database ready');
@@ -167,6 +185,26 @@ async function deleteSession(id) {
   await p.query('DELETE FROM sessions WHERE id = $1', [id]);
 }
 
+async function countPartialSessions() {
+  const r = await getPool().query(
+    `SELECT COUNT(*) AS n FROM sessions WHERE completed_at IS NULL`
+  );
+  return parseInt(r.rows[0].n, 10);
+}
+
+async function deletePartialSessions() {
+  const p = getPool();
+  // Remove logs for partial sessions first (FK constraint)
+  await p.query(
+    `DELETE FROM question_log WHERE session_id IN
+       (SELECT id FROM sessions WHERE completed_at IS NULL)`
+  );
+  const r = await p.query(
+    `DELETE FROM sessions WHERE completed_at IS NULL`
+  );
+  return r.rowCount;
+}
+
 async function getStats() {
   const p = getPool();
   const [totRes, unrevRes, rowsRes] = await Promise.all([
@@ -208,8 +246,64 @@ async function getStats() {
   return { total, unreviewed, avg, best, weakCat };
 }
 
+// ── Print Sessions ────────────────────────────────────────────────────────────
+
+async function createPrintSession({ id, shortCode, version, answersJson, readingPassage, openQuestion }) {
+  await getPool().query(
+    `INSERT INTO print_sessions
+       (id, short_code, version, created_at, answers_json, reading_passage, open_question)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [id, shortCode, version, new Date().toISOString(), answersJson, readingPassage, openQuestion]
+  );
+}
+
+async function getPrintSession(shortCode) {
+  const r = await getPool().query(
+    `SELECT * FROM print_sessions WHERE short_code = $1`, [shortCode.toUpperCase()]
+  );
+  return r.rows[0] || null;
+}
+
+async function getPrintSessionById(id) {
+  const r = await getPool().query(`SELECT * FROM print_sessions WHERE id = $1`, [id]);
+  return r.rows[0] || null;
+}
+
+async function listPrintSessions() {
+  const r = await getPool().query(
+    `SELECT id, short_code, version, created_at, student_name,
+            mc_score, mc_total, open_score, graded_at, admin_notes
+     FROM print_sessions
+     ORDER BY created_at DESC`
+  );
+  return r.rows;
+}
+
+async function savePrintGrade({ id, studentName, mcScore, mcTotal, openResponse, openScore, gradeDetail, adminNotes }) {
+  await getPool().query(
+    `UPDATE print_sessions SET
+       student_name  = $1,
+       mc_score      = $2,
+       mc_total      = $3,
+       open_response = $4,
+       open_score    = $5,
+       grade_detail  = $6,
+       admin_notes   = $7,
+       graded_at     = $8
+     WHERE id = $9`,
+    [studentName, mcScore, mcTotal, openResponse, openScore, gradeDetail, adminNotes, new Date().toISOString(), id]
+  );
+}
+
+async function deletePrintSession(id) {
+  await getPool().query(`DELETE FROM print_sessions WHERE id = $1`, [id]);
+}
+
 module.exports = {
   initDb, createSession, getSession, completeSession, logAnswer,
   getAllSessions, getSessionDetail, gradeOpenResponse, resetAllOpenScores,
   getAllLogsAggregated, deleteSession, getStats,
+  countPartialSessions, deletePartialSessions,
+  createPrintSession, getPrintSession, getPrintSessionById,
+  listPrintSessions, savePrintGrade, deletePrintSession,
 };

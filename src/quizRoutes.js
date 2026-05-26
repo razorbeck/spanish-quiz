@@ -3,7 +3,10 @@ const express  = require('express');
 const { v4: uuidv4 } = require('uuid');
 const db       = require('./db');
 const { FIESTA_FATAL, PRETERITE, IMPERFECT, VOCABULARY } = require('./questions');
-const { getReading } = require('./readings');
+const { getReading, READINGS } = require('./readings');
+
+// Combined conjugation pool — preterite + imperfect drawn together as one section
+const CONJUGATION = [...PRETERITE, ...IMPERFECT];
 
 const router = express.Router();
 
@@ -45,15 +48,21 @@ function prepareForClient(q) {
 
 /**
  * Build a full MC set for a session:
- *   10 Fiesta Fatal  |  8 Preterite  |  8 Imperfect  |  4 Vocabulary  = 30 total
+ *   15 Fiesta Fatal  |  15 Conjugation (preterite+imperfect mixed)  |  15 Vocabulary  = 45 total
+ *
+ *   Scoring weights:
+ *     Section 1 — Fiesta Fatal   = 20 pts
+ *     Section 2 — Conjugation    = 20 pts
+ *     Section 3 — Vocabulary     = 10 pts
+ *     Section 4 — Open Response  = 15 pts  (graded by teacher, 0/5/10/15)
+ *     Total                      = 65 pts
  */
-const DRAW = { ff: 10, pre: 8, imp: 8, voc: 4 };
+const DRAW = { ff: 15, conj: 15, voc: 15 };
 
 function buildQuestionSet() {
   const raw = [
     ...sample(FIESTA_FATAL, DRAW.ff),
-    ...sample(PRETERITE,    DRAW.pre),
-    ...sample(IMPERFECT,    DRAW.imp),
+    ...sample(CONJUGATION,  DRAW.conj),
     ...sample(VOCABULARY,   DRAW.voc),
   ];
   return raw.map(prepareForClient);
@@ -76,8 +85,9 @@ router.post('/start', async (req, res) => {
   try {
     const studentName = (req.body.studentName || 'Student').trim().slice(0, 60);
     let version = parseInt(req.body.version, 10);
-    if (!version || version < 1 || version > 10) {
-      version = Math.floor(Math.random() * 10) + 1;
+    const maxVersion = READINGS.length;
+    if (!version || version < 1 || version > maxVersion) {
+      version = Math.floor(Math.random() * maxVersion) + 1;
     }
 
     const sessionId = uuidv4();
