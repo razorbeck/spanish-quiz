@@ -1,13 +1,62 @@
 'use strict';
-const express  = require('express');
+const express     = require('express');
 const { v4: uuidv4 } = require('uuid');
-const Anthropic = require('@anthropic-ai/sdk');
-const db        = require('./db');
+const Anthropic   = require('@anthropic-ai/sdk');
+const fs          = require('fs');
+const path        = require('path');
+const { execFile } = require('child_process');
+const db          = require('./db');
 const { FIESTA_FATAL, PRETERITE, IMPERFECT, VOCABULARY } = require('./questions');
 const { getReading, READINGS } = require('./readings');
 
 const CONJUGATION = [...PRETERITE, ...IMPERFECT];
 const router = express.Router();
+
+// ── PDF → images helper ───────────────────────────────────────────────────────
+// Converts a base64-encoded PDF into an array of base64 JPEG images (one per page)
+// using pdftoppm from poppler-utils.
+async function pdfToImages(base64Pdf) {
+  const tmpId  = uuidv4();
+  const tmpDir = '/tmp';
+  const pdfPath    = path.join(tmpDir, `scan-${tmpId}.pdf`);
+  const imgPrefix  = path.join(tmpDir, `scan-${tmpId}`);
+
+  // Write PDF to disk
+  fs.writeFileSync(pdfPath, Buffer.from(base64Pdf, 'base64'));
+
+  try {
+    // Run pdftoppm: -jpeg -r 150 (150 dpi is plenty for Claude Vision)
+    await new Promise((resolve, reject) => {
+      execFile('pdftoppm', ['-jpeg', '-r', '150', pdfPath, imgPrefix], (err) => {
+        if (err) reject(err); else resolve();
+      });
+    });
+
+    // Collect output files (pdftoppm names them prefix-01.jpg, prefix-02.jpg, …)
+    const files = fs.readdirSync(tmpDir)
+      .filter(f => f.startsWith(`scan-${tmpId}`) && f.endsWith('.jpg'))
+      .sort()
+      .map(f => path.join(tmpDir, f));
+
+    if (!files.length) throw new Error('pdftoppm produced no output files');
+
+    // Read each page as base64
+    const images = files.map(f => ({
+      base64:   fs.readFileSync(f).toString('base64'),
+      mimeType: 'image/jpeg',
+    }));
+
+    return images;
+  } finally {
+    // Clean up temp files
+    try { fs.unlinkSync(pdfPath); } catch (_) {}
+    try {
+      fs.readdirSync(tmpDir)
+        .filter(f => f.startsWith(`scan-${tmpId}`))
+        .forEach(f => { try { fs.unlinkSync(path.join(tmpDir, f)); } catch (_) {} });
+    } catch (_) {}
+  }
+}
 
 // ── Auth middleware (same pattern as adminRoutes) ─────────────────────────────
 function requireAuth(req, res, next) {
@@ -379,7 +428,8 @@ router.delete('/:id', requireAuth, async (req, res) => {
 
 // ── POST /api/print/grade ──────────────────────────────────────────────────
 // Body: { shortCode, imageData (base64), mimeType, studentName }
-// Calls Claude Vision to read the answer sheet, compares with stored key.
+// Accepts a single image (JPEG/PNG/WEBP) or a multi-page PDF.
+// PDFs are converted to images via pdftoppm, then all pages are sent to Claude Vision.
 router.post('/grade', requireAuth, async (req, res) => {
   try {
     const { shortCode, imageData, mimeType, studentName } = req.body;
@@ -397,8 +447,38 @@ router.post('/grade', requireAuth, async (req, res) => {
     const keyStr = answerKey.map(k => `Q${k.q}: ${k.correct}`).join(', ');
     const openQuestion = session.open_question || '(open response)';
 
+    // ── Resolve images to send to Claude ─────────────────────────────────────
+    // If a PDF was uploaded, convert each page to a JPEG image.
+    // Otherwise wrap the single image in the same array shape.
+    let images;
+    const isPdf = mimeType === 'application/pdf' || mimeType === 'application/x-pdf';
+    if (isPdf) {
+      try {
+        images = await pdfToImages(imageData);
+      } catch (convErr) {
+        console.error('PDF conversion error:', convErr);
+        return res.status(422).json({
+          error: 'Could not convert PDF to images. Make sure pdftoppm is installed and the PDF is not password-protected. Error: ' + convErr.message,
+        });
+      }
+    } else {
+      images = [{ base64: imageData, mimeType: mimeType || 'image/jpeg' }];
+    }
+
+    // Build image content blocks (one per page)
+    const imageBlocks = images.map(img => ({
+      type: 'image',
+      source: { type: 'base64', media_type: img.mimeType, data: img.base64 },
+    }));
+
     // Build prompt for Claude Vision
+    const pageNote = images.length > 1
+      ? `You have been given ${images.length} pages. The answer sheet (with the bubble grid) may be on any page — find it and grade it. Ignore question booklet pages.`
+      : 'You have been given the answer sheet page.';
+
     const gradingPrompt = `You are grading a Spanish II student's paper answer sheet.
+
+${pageNote}
 
 ANSWER KEY (${answerKey.length} multiple choice questions):
 ${keyStr}
@@ -412,9 +492,9 @@ RUBRIC for open response (award exactly one of these scores):
 - 15 pts: Correct answer with proper conjugation, tense, AND extended details/elaboration
 
 INSTRUCTIONS:
-1. Read every multiple-choice answer (Q1–Q48, each marked A/B/C/D) from the answer sheet image.
-2. Read the open response text the student wrote.
-3. Compare MC answers to the answer key.
+1. Locate the answer sheet — the page with a numbered bubble grid (Q1–Q48, each with A/B/C/D columns) and an open-response writing area.
+2. Read every multiple-choice answer (Q1–Q48) from that sheet.
+3. Read the open response text the student wrote.
 4. Score the open response per the rubric.
 5. Return ONLY valid JSON — no markdown, no extra text — in exactly this shape:
 
@@ -442,14 +522,7 @@ Be thorough — read every question row carefully.`;
       messages: [{
         role: 'user',
         content: [
-          {
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: mimeType || 'image/jpeg',
-              data: imageData,
-            },
-          },
+          ...imageBlocks,
           { type: 'text', text: gradingPrompt },
         ],
       }],
